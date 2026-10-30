@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>大肥鱼工作台 · DeepSeek Companion</title>
+  <link rel="stylesheet" href="/assets/style.css?v=20261030_whale6">
+</head>
+<body>
+  <!-- DeepSeek Whale Ocean Ambient Stage -->
+  <div class="ocean-stage" aria-hidden="true">
+    <div class="ocean-glow glow-1"></div>
+    <div class="ocean-glow glow-2"></div>
+    <span class="whale-bubble b1"></span>
+    <span class="whale-bubble b2"></span>
+    <span class="whale-bubble b3"></span>
+    <span class="whale-bubble b4"></span>
+    <span class="whale-bubble b5"></span>
+  </div>
+
+  <div class="app-frame">
+    <!-- Top Navigation Dock -->
+    <header class="command-header">
+      <div class="header-left">
+        <div class="brand">
+          <div class="whale-logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="38" height="38" fill="none">
+              <defs>
+                <linearGradient id="whaleGrad" x1="4" y1="8" x2="44" y2="42" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#5B7CFA"/>
+                  <stop offset="55%" stop-color="#4D6BFE"/>
+                  <stop offset="100%" stop-color="#2298FF"/>
+                </linearGradient>
+              </defs>
+              <path class="whale-spout" d="M23 11C23 7.5 20 5 17.5 5.5M25 11C25 7.5 28 5 30.5 5.5" stroke="#4D6BFE" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M8 26.5C8 17.8 15.2 12.5 24.5 12.5C33.2 12.5 39 17.8 39.5 25.2C41.8 24.2 44.2 21.8 45 19.5C45.3 23.2 43.8 27.2 40.5 29.2C38.8 34.8 32.2 38.5 23.5 38.5C14.2 38.5 8 33.5 8 26.5Z" fill="url(#whaleGrad)"/>
+              <path d="M10.5 30.2C13.5 35.2 18.8 38.2 25.5 38.2C30.8 38.2 35.2 36.2 37.8 32.8C32.5 33.8 20.5 33.8 10.5 30.2Z" fill="#E8F1FF"/>
+              <circle cx="16.5" cy="23.5" r="2.1" fill="#FFFFFF"/>
+              <circle cx="16.2" cy="23.5" r="1.1" fill="#102342"/>
+              <ellipse cx="14.2" cy="26.2" rx="1.8" ry="1" fill="#FF9EB5" opacity="0.75"/>
+              <path d="M23 30.5C21.5 33.5 23.5 35.8 26.2 34.5" fill="#3654E6"/>
+            </svg>
+          </div>
+          <div class="brand-copy">
+            <strong>大肥鱼工作台</strong>
+            <span class="brand-tag">DeepSeek</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Segmented Navigation Bar -->
+      <nav id="navigation" class="command-nav" aria-label="主导航">
+        <span class="nav-glider" id="nav-glider" aria-hidden="true"></span>
+        <button class="nav active" data-view="home">
+          <span>陪聊主舱</span>
+        </button>
+        <button class="nav" data-view="queue">
+          <span>海域动态</span>
+        </button>
+        <button class="nav" data-view="sessions">
+          <span>脑容量</span>
+        </button>
+        <button class="nav" data-view="memory">
+          <span>肥鱼记忆库</span>
+        </button>
+        <button class="nav" data-view="platforms">
+          <span>社交码头</span>
+        </button>
+        <button class="nav" data-view="creation">
+          <span>灵感百宝箱</span>
+        </button>
+        <button class="nav" data-view="settings">
+          <span>引擎与账单</span>
+        </button>
+      </nav>
+
+      <!-- Global Controls -->
+      <div class="header-right top-actions">
+        <h1 id="page-title" class="sr-only">陪聊主舱</h1>
+        <div class="telemetry-chip">
+          <span class="live-dot" id="conn-dot"></span>
+          <span id="sidebar-status">连接中</span>
+        </div>
+        <span class="status-pill" id="run-status"><i></i> 连接中</span>
+        <button class="button outline" id="toggle-autonomy" type="button">让肥鱼休息</button>
+        <button class="icon-button" id="open-palette" type="button" title="快捷指令 (Ctrl+K)">⌘</button>
+      </div>
+    </header>
+
+    <!-- Floating Toast Notice -->
+    <div id="notice" role="status" class="notice" hidden></div>
+
+    <!-- Main Workspace Viewport -->
+    <main class="content">
+      <!-- ==================== VIEW 1: HOME ==================== -->
+      <section class="view active" id="view-home">
+        <div class="home-bento">
+          <!-- Left: Main Chat -->
+          <article class="card chat-card">
+            <div class="card-heading chat-header">
+              <div class="chat-title-group">
+                <div class="whale-avatar" id="neural-avatar">
+                  <svg viewBox="0 0 48 48" width="32" height="32" fill="none">
+                    <path d="M8 26.5C8 17.8 15.2 12.5 24.5 12.5C33.2 12.5 39 17.8 39.5 25.2C41.8 24.2 44.2 21.8 45 19.5C45.3 23.2 43.8 27.2 40.5 29.2C38.8 34.8 32.2 38.5 23.5 38.5C14.2 38.5 8 33.5 8 26.5Z" fill="#4D6BFE"/>
+                    <path d="M10.5 30.2C13.5 35.2 18.8 38.2 25.5 38.2C30.8 38.2 35.2 36.2 37.8 32.8C32.5 33.8 20.5 33.8 10.5 30.2Z" fill="#E8F1FF"/>
+                    <circle cx="16.5" cy="23.5" r="2.2" fill="#FFFFFF"/>
+                    <circle cx="16.2" cy="23.5" r="1.1" fill="#102342"/>
+                    <ellipse cx="14.2" cy="26.2" rx="1.8" ry="1" fill="#FF9EB5"/>
+                  </svg>
+                </div>
+                <h2>小芽 · 大肥鱼</h2>
+                <span class="tag accent-tag">在线陪聊</span>
+              </div>
+              <div class="chat-quick-prompts">
+                <button type="button" class="prompt-chip" data-prompt="跟我说说你今天在各个群里和大家聊了些什么好玩的事？">今日群聊趣事</button>
+                <button type="button" class="prompt-chip" data-prompt="帮我整理一下今天的随手记和创作新点子。">整理今日点子</button>
+              </div>
+            </div>
+
+            <div id="chat-messages" class="chat-messages">
+              <div class="empty">还没有对话，发条消息戳戳大肥鱼吧～</div>
+            </div>
+
+            <form id="chat-form" class="chat-compose">
+              <label class="sr-only" for="chat-input">输入消息</label>
+              <div class="compose-input-wrap">
+                <textarea id="chat-input" rows="2" placeholder="和大肥鱼聊点什么… (Enter 发送，Shift + Enter 换行)"></textarea>
+                <button class="button primary send-btn" type="submit">发送</button>
+              </div>
+            </form>
+          </article>
+
+          <!-- Right Column -->
+          <div class="home-side-stack">
+            <div class="summary-grid">
+              <article class="stat">
+                <span>待办心事</span>
+                <strong id="metric-ready" data-num="0">—</strong>
+              </article>
+              <article class="stat">
+                <span>正在忙活</span>
+                <strong id="metric-running" data-num="0">—</strong>
+              </article>
+              <article class="stat">
+                <span>已办妥</span>
+                <strong id="metric-done" data-num="0">—</strong>
+              </article>
+              <article class="stat">
+                <span>回信速度</span>
+                <strong id="metric-p95">—</strong>
+              </article>
+            </div>
+
+            <article class="card context-card">
+              <div class="card-heading compact">
+                <h2>近期记事板</h2>
+                <button class="text-button" data-go="memory" type="button">去修改 ↗</button>
+              </div>
+              <div class="context-quote-box">
+                <p class="context-preview" id="context-preview">暂无近期记事</p>
+              </div>
+            </article>
+
+            <article class="card workers-card">
+              <div class="card-heading compact">
+                <h2>分身小队状态</h2>
+                <button class="text-button" data-go="queue" type="button">全部动态 ↗</button>
+              </div>
+              <div id="home-actors" class="actor-list"></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: QUEUE & DISPATCH ==================== -->
+      <section class="view" id="view-queue">
+        <div class="queue-top-grid">
+          <article class="card activity-card">
+            <div class="card-heading compact">
+              <h2>互动实况流</h2>
+              <div class="filter-row">
+                <select id="activity-platform" aria-label="按平台筛选动态">
+                  <option value="">全部平台</option>
+                  <option value="bilibili">B 站</option>
+                  <option value="douyin">抖音</option>
+                  <option value="xiaohongshu">小红书</option>
+                </select>
+                <select id="activity-channel" aria-label="按类型筛选动态">
+                  <option value="">全部互动</option>
+                  <option value="message">私信 / 群聊</option>
+                  <option value="comment">评论 / 提及</option>
+                  <option value="publish">作品发布</option>
+                  <option value="other">其他</option>
+                </select>
+              </div>
+            </div>
+            <div id="activity-list" class="activity-list"></div>
+          </article>
+
+          <article class="card queue-table-card">
+            <div class="card-heading compact">
+              <h2>心事任务单</h2>
+              <div class="filter-row">
+                <select id="actor-filter" aria-label="筛选角色">
+                  <option value="">全部分身</option>
+                  <option value="main">陪聊主舱</option>
+                  <option value="bili_chat">B 站私信</option>
+                  <option value="bili_group">B 站群聊</option>
+                  <option value="bili_comment">B 站评论</option>
+                  <option value="douyin_chat">抖音私信</option>
+                  <option value="douyin_group">抖音群聊</option>
+                  <option value="douyin_comment">抖音评论</option>
+                  <option value="xhs_chat">小红书私信</option>
+                  <option value="xhs_comment">小红书评论</option>
+                  <option value="media">画师分身</option>
+                  <option value="creator">创作分身</option>
+                  <option value="publisher">发布分身</option>
+                </select>
+                <select id="job-filter" aria-label="筛选任务状态">
+                  <option value="">全部状态</option>
+                  <option value="ready">排队中</option>
+                  <option value="running">忙活中</option>
+                  <option value="succeeded">已办妥</option>
+                  <option value="failed">翻车了</option>
+                  <option value="cancelled">已撤回</option>
+                </select>
+                <button class="button outline small-btn" id="refresh-queue" type="button">刷新</button>
+              </div>
+            </div>
+            <div class="status-quick-tabs" id="job-quick-tabs">
+              <button type="button" class="chip-tab active" data-status="">全部</button>
+              <button type="button" class="chip-tab" data-status="ready">排队中</button>
+              <button type="button" class="chip-tab" data-status="running">忙活中</button>
+              <button type="button" class="chip-tab" data-status="succeeded">已办妥</button>
+              <button type="button" class="chip-tab" data-status="failed">翻车了</button>
+            </div>
+            <div class="table-wrap">
+              <table class="responsive-table">
+                <thead>
+                  <tr><th>事项</th><th>负责分身</th><th>状态</th><th>时间</th><th>操作</th></tr>
+                </thead>
+                <tbody id="jobs-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div class="two-cols">
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>小闹钟与日程</h2>
+            </div>
+            <div id="timers-list" class="timers-list"></div>
+            <form id="timer-form" class="timer-form">
+              <div class="form-row">
+                <label>闹钟名称
+                  <input name="title" placeholder="例如：午间巡游整理灵感" required>
+                </label>
+                <label>唤醒分身
+                  <select name="actor_id">
+                    <option value="main">陪聊主舱</option>
+                    <option value="bili_chat">B 站私信</option>
+                    <option value="bili_comment">B 站评论</option>
+                    <option value="douyin_chat">抖音私信</option>
+                    <option value="douyin_comment">抖音评论</option>
+                    <option value="xhs_chat">小红书私信</option>
+                    <option value="xhs_comment">小红书评论</option>
+                    <option value="media">画师分身</option>
+                    <option value="creator">创作分身</option>
+                    <option value="publisher">发布分身</option>
+                  </select>
+                </label>
+              </div>
+              <label>叮嘱内容
+                <textarea name="instruction" rows="2" placeholder="可选，告诉它醒来后做什么"></textarea>
+              </label>
+              <div class="form-row">
+                <label>几秒后首次响铃
+                  <input name="after" type="number" min="0" placeholder="60" required>
+                </label>
+                <label>重复间隔秒数（留空只响一次）
+                  <input name="interval" type="number" min="1" placeholder="3600">
+                </label>
+              </div>
+              <label class="checkbox-row">
+                <input name="autonomous" type="checkbox" checked>
+                <span>肥鱼休息时暂停响铃</span>
+              </label>
+              <div class="button-row">
+                <button class="button primary" id="timer-submit" type="submit">定好闹钟</button>
+                <button class="button ghost" id="timer-cancel" type="button" hidden>取消修改</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>分身小队名册</h2>
+            </div>
+            <div id="actors-detail" class="actor-list detailed"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-heading compact">
+            <h2>外发足迹</h2>
+          </div>
+          <div class="table-wrap">
+            <table class="responsive-table">
+              <thead>
+                <tr><th>时间</th><th>平台</th><th>举动</th><th>对象</th><th>结果</th><th>详情</th></tr>
+              </thead>
+              <tbody id="actions-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- ==================== VIEW 3: SESSIONS ==================== -->
+      <section class="view" id="view-sessions">
+        <article class="card">
+          <div class="card-heading compact">
+            <h2>各分身脑容量水位</h2>
+          </div>
+          <div class="table-wrap">
+            <table class="responsive-table sessions-table">
+              <thead>
+                <tr><th>分身角色</th><th>当前记忆水位 / 容量上限</th><th>自动瘦身策略</th><th>状态</th><th>操作</th></tr>
+              </thead>
+              <tbody id="sessions-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- ==================== VIEW 4: MEMORY ==================== -->
+      <section class="view" id="view-memory">
+        <div class="two-cols memory-top-cols">
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>灵魂设定</h2>
+              <span class="tag accent-tag">小芽 · 大肥鱼</span>
+            </div>
+            <textarea id="persona-editor" class="editor" rows="11" placeholder="写下大肥鱼的性格底色与说话习惯…"></textarea>
+            <div class="button-row">
+              <button id="save-persona" class="button primary" type="button">保存灵魂设定</button>
+              <button id="restore-whale-persona" class="button outline" type="button">一键载入大肥鱼毒舌人格</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>近期记事板</h2>
+              <span class="tag" id="context-char-count">0 / 2000</span>
+            </div>
+            <textarea id="context-editor" class="editor" rows="11" maxlength="2000" placeholder="最近正在忙什么？有什么需要所有分身一起记住的事？"></textarea>
+            <div class="button-row">
+              <button id="save-context" class="button primary" type="button">保存记事板</button>
+              <button id="broadcast-context" class="button outline" type="button">保存并传达给所有分身</button>
+            </div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-heading compact">
+            <h2>珍贵回忆、朋友画像与随手小本本</h2>
+            <div class="button-row">
+              <input id="memory-search" placeholder="翻找记忆…">
+              <select id="memory-status-filter" aria-label="筛选记忆状态">
+                <option value="active">常驻脑海</option>
+                <option value="archived">收进箱底</option>
+                <option value="all">全部记录</option>
+              </select>
+              <button class="button outline" id="search-memory" type="button">翻找</button>
+              <button class="button primary" id="new-memory" type="button">+ 记一笔</button>
+            </div>
+          </div>
+
+          <div class="memory-layout">
+            <div class="memory-list-pane">
+              <div id="memory-list" class="memory-list"></div>
+            </div>
+            <form id="memory-form" class="memory-form">
+              <input type="hidden" name="memory_id">
+              <div class="form-row">
+                <label>记录分类
+                  <select name="kind">
+                    <option value="episode">珍贵回忆</option>
+                    <option value="acquaintance">朋友画像</option>
+                    <option value="scratchpad">随手小本本</option>
+                  </select>
+                </label>
+                <label>收纳状态
+                  <select name="status">
+                    <option value="active">常驻脑海</option>
+                    <option value="archived">收进箱底</option>
+                  </select>
+                </label>
+              </div>
+              <label>标题 / 朋友昵称
+                <input name="title" placeholder="给这段回忆或朋友起个名字">
+              </label>
+              <div class="form-row">
+                <label>认识的平台
+                  <input name="platform" placeholder="bilibili / douyin">
+                </label>
+                <label>对方账号 ID
+                  <input name="subject_id">
+                </label>
+              </div>
+              <label>详细内容
+                <textarea name="content" rows="6" required></textarea>
+              </label>
+              <label>小标签（逗号分隔）
+                <input name="tags" placeholder="老朋友, 画画, 趣事">
+              </label>
+              <label>附加信息（JSON）
+                <textarea name="metadata" class="mono-input" rows="2" placeholder="{}"></textarea>
+              </label>
+              <div class="button-row">
+                <button class="button primary" type="submit">收好这一笔</button>
+                <button class="button ghost" type="button" id="delete-memory">抹掉</button>
+              </div>
+            </form>
+          </div>
+        </article>
+      </section>
+
+      <!-- ==================== VIEW 5: PLATFORMS ==================== -->
+      <section class="view" id="view-platforms">
+        <div class="platform-grid">
+          <article class="card platform-card">
+            <div class="platform-header">
+              <div class="platform-icon bili">哔</div>
+              <div>
+                <h2>哔哩哔哩</h2>
+                <p id="bili-state">未检查</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="bili-enabled">
+                <span></span>
+                <em>开启</em>
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="button outline login-button" type="button" data-platform="bilibili" data-channel="messages">扫码登录</button>
+              <button class="text-button check-auth" type="button" data-platform="bilibili">看看状态</button>
+            </div>
+          </article>
+
+          <article class="card platform-card">
+            <div class="platform-header">
+              <div class="platform-icon douyin">♫</div>
+              <div>
+                <h2>抖音</h2>
+                <p id="douyin-state">私信与创作者页分别登录</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="douyin-enabled">
+                <span></span>
+                <em>开启</em>
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="button outline login-button" type="button" data-platform="douyin" data-channel="messages">私信扫码</button>
+              <button class="button outline login-button" type="button" data-platform="douyin" data-channel="web">创作者扫码</button>
+              <button class="text-button check-auth" type="button" data-platform="douyin">看看状态</button>
+            </div>
+          </article>
+
+          <article class="card platform-card">
+            <div class="platform-header">
+              <div class="platform-icon weixin">微</div>
+              <div>
+                <h2>微信</h2>
+                <p id="weixin-state">尚未登录</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="weixin-enabled">
+                <span></span>
+                <em>开启</em>
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="button outline login-button" type="button" data-platform="weixin" data-channel="messages">扫码登录</button>
+              <button class="text-button check-auth" type="button" data-platform="weixin">看看状态</button>
+            </div>
+          </article>
+
+          <article class="card platform-card muted">
+            <div class="platform-header">
+              <div class="platform-icon xhs">小</div>
+              <div>
+                <h2>小红书</h2>
+                <p>即将靠岸</p>
+              </div>
+              <span class="tag">待开放</span>
+            </div>
+          </article>
+        </div>
+
+        <div class="two-cols">
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>巡游与群聊规则</h2>
+            </div>
+            <form id="platform-form">
+              <div class="form-row">
+                <label>B 站熟人管理员 ID
+                  <input name="bili_admins" placeholder="逗号分隔">
+                </label>
+                <label>抖音熟人管理员 ID
+                  <input name="douyin_admins" placeholder="逗号分隔">
+                </label>
+              </div>
+              <div class="form-row three">
+                <label>B 站巡看间隔（秒）
+                  <input name="bili_poll" type="number" min="1">
+                </label>
+                <label>抖音巡看间隔（秒）
+                  <input name="douyin_poll" type="number" min="1">
+                </label>
+                <label>小红书管理员 ID
+                  <input name="xhs_admins">
+                </label>
+              </div>
+              <div class="checkbox-row">
+                <label><input type="checkbox" name="bili_messages"> <span>接听 B 站私信</span></label>
+                <label><input type="checkbox" name="bili_comments"> <span>巡看 B 站评论</span></label>
+                <label><input type="checkbox" name="douyin_messages"> <span>接听抖音私信</span></label>
+                <label><input type="checkbox" name="douyin_comments"> <span>巡看抖音评论</span></label>
+              </div>
+              <hr>
+              <div class="checkbox-row">
+                <label><input type="checkbox" name="bili_groups"> <span>加入 B 站群聊</span></label>
+                <label><input type="checkbox" name="douyin_groups"> <span>加入抖音群聊</span></label>
+                <label><input type="checkbox" name="weixin_messages"> <span>接听微信消息</span></label>
+              </div>
+              <div class="form-row">
+                <label>微信巡看间隔（秒）
+                  <input name="weixin_poll" type="number" min="1" required>
+                </label>
+                <div></div>
+              </div>
+              <div class="checkbox-row">
+                <label><input type="checkbox" name="read_inbound_images"> <span>私信和群聊都读取图片、表情包</span></label>
+                <label><input type="checkbox" name="save_inbound_images"> <span>自动保存收到的图片</span></label>
+              </div>
+              <div class="form-row">
+                <label>B 站群聊接话间隔（分钟）
+                  <input name="bili_group_minutes" type="number" min="0.1" step="0.1" required>
+                </label>
+                <label>抖音群聊接话间隔（分钟）
+                  <input name="douyin_group_minutes" type="number" min="0.1" step="0.1" required>
+                </label>
+              </div>
+              <button class="button primary" type="submit">保存巡游规则</button>
+            </form>
+          </article>
+
+          <div class="stack">
+            <article class="card">
+              <div class="card-heading compact">
+                <h2>发作品零花钱（每日限额）</h2>
+              </div>
+              <form id="publish-form">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" name="enabled"> <span>允许肥鱼自己发作品</span></label>
+                </div>
+                <div class="form-row three">
+                  <label>B 站每日篇数
+                    <input type="number" min="0" name="bilibili">
+                  </label>
+                  <label>抖音每日篇数
+                    <input type="number" min="0" name="douyin">
+                  </label>
+                  <label>小红书每日篇数
+                    <input type="number" min="0" name="xiaohongshu">
+                  </label>
+                </div>
+                <button class="button primary" type="submit">保存发作品限额</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading compact">
+                <h2>斗图与发图限额</h2>
+              </div>
+              <form id="image-quota-form">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" name="enabled"> <span>允许聊天时发图</span></label>
+                </div>
+                <div class="form-row">
+                  <label>抖音每日发图上限（张）
+                    <input type="number" min="0" name="douyin" required>
+                  </label>
+                  <label>微信每日发图上限（张）
+                    <input type="number" min="0" name="weixin" required>
+                  </label>
+                </div>
+                <button class="button primary" type="submit">保存发图限额</button>
+              </form>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6: CREATION ==================== -->
+      <section class="view" id="view-creation">
+        <div class="creation-studio-grid">
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>灵感百宝箱</h2>
+              <button class="button primary small-btn" id="scan-creation" type="button">清点新素材</button>
+            </div>
+            <form id="folder-form" class="folder-form">
+              <label>百宝箱本地目录
+                <input name="path" id="folder-path">
+              </label>
+              <div class="button-row">
+                <button class="button primary" type="submit">记住目录</button>
+                <button class="button outline" type="button" id="open-creation-folder">打开文件夹</button>
+              </div>
+            </form>
+            <div class="table-wrap">
+              <table class="responsive-table">
+                <thead>
+                  <tr><th>素材文件</th><th>格式</th><th>大小</th><th>放入时间</th></tr>
+                </thead>
+                <tbody id="files-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="card preview-card">
+            <div class="card-heading compact">
+              <h2>素材小窗预览</h2>
+              <button class="text-button" id="copy-preview" type="button">复制文字</button>
+            </div>
+            <pre id="file-preview" class="file-preview">点选左侧的文稿素材，即可在这里展开阅读。</pre>
+          </article>
+
+          <article class="card media-library-card">
+            <div class="card-heading compact">
+              <h2>已保存的图片与表情</h2>
+              <button class="button outline small-btn" id="refresh-media-library" type="button">刷新列表</button>
+            </div>
+            <div class="table-wrap">
+              <table class="responsive-table">
+                <thead>
+                  <tr><th>来源</th><th>类型</th><th>保存路径</th><th>时间</th><th></th></tr>
+                </thead>
+                <tbody id="media-library-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 7: SETTINGS ==================== -->
+      <section class="view" id="view-settings">
+        <article class="card usage-card">
+          <div class="card-heading compact">
+            <h2>猫粮账单与算力消耗</h2>
+            <span class="tag" id="usage-note">正在算账…</span>
+          </div>
+
+          <div class="usage-grid">
+            <div class="usage-tile">
+              <span>总消耗 Token</span>
+              <strong id="usage-total">—</strong>
+            </div>
+            <div class="usage-tile">
+              <span>新读取输入</span>
+              <strong id="usage-input">—</strong>
+            </div>
+            <div class="usage-tile">
+              <span>熟记缓存命中</span>
+              <strong id="usage-cache">—</strong>
+            </div>
+            <div class="usage-tile">
+              <span>思考与回复输出</span>
+              <strong id="usage-output">—</strong>
+            </div>
+            <div class="usage-tile highlight-cost">
+              <span>预估猫粮钱（RMB）</span>
+              <strong id="usage-cost">—</strong>
+            </div>
+          </div>
+
+          <div class="usage-ratio-bar" id="usage-ratio-bar">
+            <i class="ratio-seg uncached" id="ratio-uncached" style="width:33%"></i>
+            <i class="ratio-seg cached" id="ratio-cached" style="width:34%"></i>
+            <i class="ratio-seg output" id="ratio-output" style="width:33%"></i>
+          </div>
+
+          <hr>
+          <form id="pricing-form">
+            <div class="form-row">
+              <label>单价标准
+                <select name="profile_id" id="pricing-select"></select>
+              </label>
+              <label>标准名称
+                <input name="name" required>
+              </label>
+            </div>
+            <div class="form-row three">
+              <label>新输入（元 / 百万）
+                <input name="uncached_input" type="number" min="0" step="any" required>
+              </label>
+              <label>缓存命中（元 / 百万）
+                <input name="cached_input" type="number" min="0" step="any" required>
+              </label>
+              <label>回复输出（元 / 百万）
+                <input name="output" type="number" min="0" step="any" required>
+              </label>
+            </div>
+            <div class="button-row">
+              <button class="button primary" type="submit">保存这套单价</button>
+              <button class="button outline" type="button" id="pricing-new">+ 新增单价</button>
+            </div>
+          </form>
+        </article>
+
+        <div class="two-cols">
+          <article class="card">
+            <div class="card-heading compact">
+              <h2>大脑模型接口</h2>
+            </div>
+            <form id="model-form">
+              <label>接口地址 (Base URL)
+                <input name="base_url" placeholder="https://…/v1" required>
+              </label>
+              <label>模型代号
+                <input name="model" required>
+              </label>
+              <div class="form-row">
+                <label>通讯协议
+                  <select name="api_format">
+                    <option value="openai-completions">OpenAI Chat Completions</option>
+                    <option value="openai-responses">OpenAI Responses</option>
+                    <option value="anthropic-messages">Anthropic Messages</option>
+                  </select>
+                </label>
+                <label>特性适配
+                  <select name="compatibility">
+                    <option value="deepseek">DeepSeek 满血适配</option>
+                    <option value="standard">通用标准接口</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label>脑容量上限（Token）
+                  <input name="context_length" type="number" min="1" required>
+                </label>
+                <label>单次最多说多少（Token）
+                  <input name="max_tokens" type="number" min="1" required>
+                </label>
+              </div>
+              <div class="form-row">
+                <label>动脑筋程度
+                  <select name="reasoning_effort">
+                    <option value="off">直觉秒回</option>
+                    <option value="low">稍微想想</option>
+                    <option value="high">深思熟虑</option>
+                    <option value="max">全力推演</option>
+                  </select>
+                </label>
+                <label>接口密钥
+                  <input name="api_key" type="password" autocomplete="new-password" placeholder="留空则沿用原密钥">
+                </label>
+              </div>
+              <button class="button primary" type="submit">换好大脑并重启</button>
+            </form>
+            <hr>
+            <form id="import-form">
+              <div class="form-row">
+                <label>从已有配置本导入
+                  <input name="path" placeholder="配置文件完整路径" required>
+                </label>
+                <label>选用第几组（从 0 数起）
+                  <input name="index" type="number" min="0" value="0">
+                </label>
+              </div>
+              <button class="button outline" type="submit">一键导入</button>
+            </form>
+          </article>
+
+          <div class="stack">
+            <article class="card">
+              <div class="card-heading compact">
+                <h2>生物钟与作息节拍</h2>
+              </div>
+              <form id="autonomy-form">
+                <label class="checkbox-row">
+                  <input name="enabled" type="checkbox">
+                  <span>允许肥鱼平时自己四处逛逛</span>
+                </label>
+                <label>自己醒来逛逛间隔（秒）
+                  <input name="main_interval_seconds" type="number" min="1">
+                </label>
+                <label>整理随手小本本间隔（秒）
+                  <input name="memory_interval_seconds" type="number" min="1">
+                </label>
+                <label>翻看灵感百宝箱间隔（秒）
+                  <input name="background_scan_seconds" type="number" min="1">
+                </label>
+                <button class="button primary" type="submit">保存作息节拍</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading compact">
+                <h2>画笔工具箱（生图接口）</h2>
+              </div>
+              <form id="image-form">
+                <label>画室地址 (API URL)
+                  <input name="url" type="url" placeholder="https://…/v1" required>
+                </label>
+                <div class="form-row">
+                  <label>画室密钥
+                    <input name="api_key" type="password" autocomplete="new-password" placeholder="输入密钥">
+                  </label>
+                  <label>指定画师模型（可选）
+                    <input name="model" placeholder="默认画师">
+                  </label>
+                </div>
+                <button class="button primary" type="submit">保存画笔配置</button>
+              </form>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ==================== MODAL: RECORD DETAIL ==================== -->
+  <dialog id="detail-dialog" class="detail-dialog">
+    <div class="dialog-top">
+      <h2 id="detail-title">记录详情</h2>
+      <div class="button-row">
+        <button class="button outline small-btn" id="copy-detail" type="button">复制</button>
+        <button class="icon-button" id="close-detail" type="button" aria-label="关闭">×</button>
+      </div>
+    </div>
+    <pre id="detail-content" class="detail-content"></pre>
+  </dialog>
+
+  <!-- ==================== MODAL: QR LOGIN ==================== -->
+  <dialog id="login-dialog" class="login-dialog">
+    <div class="dialog-top">
+      <h2 id="login-title">扫码登录</h2>
+      <button class="icon-button" id="close-login" type="button" aria-label="关闭">×</button>
+    </div>
+    <p id="login-message" class="login-status-text">正在呼唤二维码…</p>
+    <div class="qr-stage">
+      <div class="qr-scanner-line" aria-hidden="true"></div>
+      <img id="login-qr" alt="登录二维码" hidden>
+    </div>
+    <div class="button-row justify-center">
+      <button class="button outline" id="check-login" type="button">刷新状态</button>
+    </div>
+  </dialog>
+
+  <!-- ==================== MODAL: COMMAND PALETTE (Ctrl+K) ==================== -->
+  <dialog id="palette-dialog" class="palette-dialog">
+    <div class="palette-search-bar">
+      <input id="palette-input" placeholder="想去哪儿或做什么？…" autocomplete="off">
+      <kbd>ESC</kbd>
+    </div>
+    <div id="palette-list" class="palette-list"></div>
+  </dialog>
+
+  <script src="/assets/app.js?v=20261030_whale6" defer></script>
+</body>
+</html>

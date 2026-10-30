@@ -1,0 +1,6 @@
+providers:
+  default:
+    type: openai_compatible
+    base_url: ${DEEPSEEK_BASE_URL}
+    api_key: ${DEEPSEEK_API_KEY}
+    default_model: ${DEEPSEEK_DEFAULT_MODEL}

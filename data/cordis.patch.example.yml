@@ -1,0 +1,31 @@
+- id: llm-pi-ai
+  config:
+    providers:
+      default:
+        displayName: DeepSeek
+        api: openai-completions
+        apiKeyEnv: DSH_DEFAULT_API_KEY
+        baseURL: https://api.deepseek.com/v1
+        reasoning: low
+        compat:
+          thinkingFormat: deepseek
+          supportsReasoningEffort: true
+          requiresReasoningContentOnAssistantMessages: true
+          maxTokensField: max_tokens
+        models:
+          - id: deepseek-chat
+            name: DeepSeek Chat
+            contextWindow: 128000
+            maxTokens: 8192
+            input: [text]
+            reasoningEfforts: {low: low, high: high, max: max}
+- id: agent-default-model
+  config:
+    provider: default
+    model: deepseek-chat
+    reasoningEffort: low
+- id: compaction-basic
+  config:
+    thresholdRatio: 0.9
+    headroomTokens: 8192
+    maxTokens: 8192

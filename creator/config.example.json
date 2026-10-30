@@ -1,0 +1,12 @@
+{
+  "interaction_mode": "dsh-chat",
+  "timezone": "Asia/Shanghai",
+  "interval_seconds": 1800,
+  "round_timeout_seconds": 900,
+  "max_rounds_per_day": 24,
+  "active_hours": [9, 23],
+  "platforms": [],
+  "daily_limits": {"post": 0, "comment": 0, "message": 0, "like": 0},
+  "autonomous_publish": false,
+  "autonomous_chat": false
+}

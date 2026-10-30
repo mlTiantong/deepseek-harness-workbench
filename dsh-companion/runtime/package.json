@@ -1,0 +1,9 @@
+{
+  "name": "dsh-companion-runtime",
+  "private": true,
+  "description": "Project-local DeepSeek Harness runtime for dsh-companion",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "douyin-im": "1.1.0"
+  }
+}

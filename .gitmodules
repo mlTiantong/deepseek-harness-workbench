@@ -1,0 +1,4 @@
+[submodule "dsh-companion/vendor/douyin-tools"]
+	path = dsh-companion/vendor/douyin-tools
+	url = https://github.com/kdcadmin/dsh_douyin_tools.git
+	branch = main

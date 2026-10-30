@@ -1,0 +1,12 @@
+.venv/
+browser/
+browser-output/
+state/
+logs/
+__pycache__/
+runtime/node_modules/
+PAUSED
+
+console-window/
+OWNER_CONTACT.json
+CONSOLE_SETTINGS.json
