@@ -31,7 +31,7 @@ npm ci --prefix .\runtime --no-audit --no-fund
 
 启动后访问 `http://127.0.0.1:8765/`。模型配置可在工作台中填写，也可以先设置 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_DEFAULT_MODEL`，再运行根目录的 `configure.py`。密钥只写入被 Git 忽略的本地 `data/.credentials.yaml`。
 
-创作者工作台是可选模块：先安装 `creator/requirements.lock.txt`，复制 `creator/*.example` 为本地配置文件，再运行 `知游工作台.cmd`。完整说明见 [`dsh-companion/README.md`](dsh-companion/README.md) 和 [`creator/README.md`](creator/README.md)。
+创作者工作台是可选模块：它还需要单独安装官方 DeepSeek Harness 桌面应用；若应用不在仓库的默认 `app/` 目录，请设置 `DSH_APP_PATH`。然后安装 `creator/requirements.lock.txt`，复制 `creator/*.example` 为本地配置文件，再运行 `知游工作台.cmd`。完整说明见 [`dsh-companion/README.md`](dsh-companion/README.md) 和 [`creator/README.md`](creator/README.md)。
 
 ## 使用的插件与依赖
 
