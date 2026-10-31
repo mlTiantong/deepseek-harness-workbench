@@ -21,6 +21,20 @@ from bilibili_api.utils.picture import Picture
 
 from ..store import Store
 from ..video_media import create_cover, extract_frame, sample_times, transcribe_audio
+from ..comment_reading import comments_result, normalize_comment, prioritize_comments
+
+
+def message_payload(message: dict[str, Any]) -> dict[str, Any]:
+    """Bilibili type 2/6 pictures share the same visual input path as IM stickers."""
+    body = json.loads(message['content'])
+    text = body.get('content', '') if isinstance(body, dict) else str(body)
+    payload = {'text': text, 'message_type': message['msg_type'], 'message': message}
+    if message['msg_type'] in (2, 6):
+        url = body.get('url') or ''
+        if url.startswith('//'): url = 'https:' + url
+        payload['text'] = text or '[图片]'
+        payload['content'] = {'kind': 'image', 'image': {'originUrls': [url] if url else []}}
+    return payload
 
 
 class BilibiliAdapter:
@@ -155,10 +169,7 @@ class BilibiliAdapter:
             state[str(talker)] = max([last_seen, *[int(message["msg_seqno"]) for message in messages]])
         events = []
         for talker, conversation, message in sorted(staged, key=lambda row: (int(row[2]["timestamp"]), int(row[2]["msg_seqno"]))):
-            body = json.loads(message["content"])
-            text = body.get("content", "") if isinstance(body, dict) else str(body)
-            payload = {"text": text, "message_type": message["msg_type"],
-                       "message": message, "conversation": conversation}
+            payload = {**message_payload(message), "conversation": conversation}
             event, _, created = self.store.ingest_event(
                 self.name, "message", payload, account_id=str(me),
                 external_id=f"{talker}:{message['msg_key']}", conversation_id=str(talker),
@@ -179,11 +190,9 @@ class BilibiliAdapter:
         page = await session.fetch_session_msgs(int(conversation_id), self._credential(), session_type=2)
         result = []
         for message in sorted(page.get("messages") or [], key=lambda item: int(item["msg_seqno"]))[-limit:]:
-            body = json.loads(message["content"])
             result.append({"platform": self.name, "account_id": account_id, "conversation_id": conversation_id,
                            "sender_id": str(message["sender_uid"]), "occurred_at": message["timestamp"],
-                           "payload": {"text": body.get("content", "") if isinstance(body, dict) else str(body),
-                                       "message_type": message["msg_type"], "message": message}})
+                           "payload": message_payload(message)})
         return result
 
     async def poll_groups(self) -> list[dict[str, Any]]:
@@ -210,10 +219,7 @@ class BilibiliAdapter:
             for message in sorted(messages, key=lambda item: int(item["msg_seqno"])):
                 if str(message["sender_uid"]) == account_id or float(message["timestamp"]) < started_at:
                     continue
-                body = json.loads(message["content"])
-                text = body.get("content", "") if isinstance(body, dict) else str(body)
-                payload = {"text": text, "message_type": message["msg_type"], "message": message,
-                           "group_name": group.get("group_name", ""),
+                payload = {**message_payload(message), "group_name": group.get("group_name", ""),
                            "is_mention_me": int(message["msg_seqno"]) == int(group.get("at_seqno") or 0)}
                 event, _, created = self.store.ingest_group_event(
                     self.name, payload, account_id=account_id, conversation_id=group_id,
@@ -335,11 +341,34 @@ class BilibiliAdapter:
         return await target.get_info()
 
     async def get_content_comments(self, *, content_id: str, resource_type: int = 1,
-                                   cursor: str = "", limit: int = 20) -> dict[str, Any]:
+                                   cursor: str = "", limit: int = 20, author_id: str = "") -> dict[str, Any]:
         credential = self._credential() if self.credentials_file.exists() else None
-        oid = video.Video(bvid=content_id).get_aid() if content_id.upper().startswith("BV") else int(content_id)
-        return await comment.get_comments_lazy(oid, comment.CommentResourceType(resource_type),
-                                               offset=cursor, credential=credential)
+        match = re.search(r"(BV[0-9A-Za-z]+|av\d+)", content_id, re.IGNORECASE)
+        ident = match.group(1) if match else content_id
+        oid = (video.Video(bvid=ident).get_aid() if ident.upper().startswith("BV")
+               else int(ident.lower().removeprefix("av")))
+        items = []
+        offset = cursor
+        while True:
+            page = await comment.get_comments_lazy(oid, comment.CommentResourceType(resource_type),
+                                                   offset=offset, order=comment.OrderType.LIKE,
+                                                   credential=credential)
+            author_id = author_id or str((page.get("upper") or {}).get("mid") or "")
+            top = page.get("top") or {}
+            pinned = [item for item in top.values() if isinstance(item, dict) and "rpid" in item]
+            pinned += page.get("top_replies") or []
+            for item in pinned + (page.get("replies") or []):
+                items.append(normalize_comment("bilibili", item, pinned=item in pinned, author_id=author_id))
+                for reply in item.get("replies") or []:
+                    items.append(normalize_comment("bilibili", reply, author_id=author_id,
+                                                   parent_id=str(item["rpid"])))
+            paging = page.get("cursor") or {}
+            next_offset = (paging.get("pagination_reply") or {}).get("next_offset") or ""
+            has_more = not paging.get("is_end", False) and bool(next_offset)
+            if len(prioritize_comments(items, limit)) >= limit or not has_more or next_offset == offset:
+                return comments_result("bilibili", ident, items, limit,
+                                       next_cursor=next_offset, has_more=has_more)
+            offset = next_offset
 
     async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
                                  frame_count: int = 8, include_audio: bool = False,
@@ -388,5 +417,6 @@ class BilibiliAdapter:
             else:
                 audio["audio_status"] = "no_audio"
         return {"platform": "bilibili", "content_id": info["bvid"], "title": info["title"],
-                "description": info.get("desc", ""), "duration": duration, "frames": frames,
+                "description": info.get("desc", ""), "author_id": str((info.get("owner") or {}).get("mid") or ""),
+                "duration": duration, "frames": frames,
                 "subtitles": subtitle_text, **audio}

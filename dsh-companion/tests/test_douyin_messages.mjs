@@ -26,3 +26,19 @@ test('历史群消息识别表情并与实时消息使用相同事件 ID', () =>
   assert.equal(event.sender_name, '成员-other')
   assert.equal(event.occurred_at, 1700000000)
 })
+
+
+test('私信和历史群聊表情使用 CDN url_list 而非资源 uri，并保留备用地址', () => {
+  for (const aweType of [501, 507, 508, 510, 516]) {
+    const rawContent = JSON.stringify({ aweType, url: { uri: 'tos-cn-i/resource-id',
+      url_list: ['https://cdn.test/first', 'https://cdn.test/backup'] } })
+    const dm = messageData({ account, conversationType: 1, threadId: 'dm-1', senderUid: 'other',
+      messageType: 7, rawContent })
+    assert.equal(dm.payload.content.kind, 'emoji')
+    assert.equal(dm.payload.content.url, 'https://cdn.test/first')
+    assert.deepEqual(dm.payload.content.urls, ['https://cdn.test/first', 'https://cdn.test/backup'])
+    const history = historyEvent({senderUid:'other',msgId:'m3',msgType:7,content:rawContent},group,account)
+    assert.equal(history.payload.content.url,'https://cdn.test/first')
+    assert.deepEqual(history.payload.content.urls,dm.payload.content.urls)
+  }
+})

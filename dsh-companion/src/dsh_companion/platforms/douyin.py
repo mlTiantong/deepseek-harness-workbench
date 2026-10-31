@@ -102,10 +102,10 @@ class DouyinAdapter:
         return await self.web.call("douyin_video", aweme_id=content_id)
 
     async def get_content_comments(self, *, content_id: str, resource_type: int = 1,
-                                   cursor: str = "", limit: int = 20) -> dict[str, Any]:
+                                   cursor: str = "", limit: int = 20, author_id: str = "") -> dict[str, Any]:
         if cursor:
             raise ValueError("抖音插件当前按数量读取评论，不提供翻页游标")
-        return await self.web.call("douyin_comments", aweme_id=content_id, num=limit)
+        return await self.web.call("companion_read_comments", content_id=content_id, limit=limit, author_id=author_id)
 
     async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
                                  frame_count: int = 8, include_audio: bool = False,

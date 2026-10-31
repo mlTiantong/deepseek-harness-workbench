@@ -77,7 +77,7 @@ export function apply(ctx) {
       const person = data.acquaintance
       return [
         `## 当前执行角色\n${data.actor_id}`,
-        `## 共享核心人格\n${data.persona}`,
+        data.persona ? `## 共享核心人格\n${data.persona}` : '',
         `## 近期共同背景\n${data.recent_context}`,
         person ? `## 当前对象的熟人印象\n${person.content}` : '',
       ].filter(Boolean).join('\n\n')

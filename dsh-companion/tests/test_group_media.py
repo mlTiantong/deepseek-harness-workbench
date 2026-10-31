@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from PIL import Image
 
 from dsh_companion.dsh_runtime import DshRuntime
-from dsh_companion.message_media import cache_image
+from dsh_companion.message_media import cache_image, normalize_message_content, visual_blocks_from_path
 from dsh_companion.platform_service import PlatformService
 from dsh_companion.platforms.bilibili import BilibiliAdapter
 from dsh_companion.platforms.douyin_im import DouyinIM
@@ -102,6 +102,51 @@ class MediaTests(unittest.TestCase):
                                 Path(self.tmp.name), index=2, client=client)
             self.assertEqual(base64.b64decode(emoji['data']), self.png)
 
+    def test_sticker_uri_is_not_a_download_url_and_old_messages_are_repaired(self):
+        payload={'content':{'kind':'emoji','url':'tos-cn-i/sticker-id'}, 'raw_content':json.dumps({
+            'url':{'uri':'tos-cn-i/sticker-id','url_list':['https://cdn.test/bad','https://cdn.test/good']}})}
+        normalized=normalize_message_content(payload)
+        self.assertEqual(normalized['url'],'https://cdn.test/bad')
+        self.assertEqual(payload['content']['url'],'tos-cn-i/sticker-id')
+        requested=[]
+        def handler(request):
+            requested.append(str(request.url))
+            return httpx.Response(403) if request.url.path=='/bad' else httpx.Response(200,content=self.png)
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            block=cache_image(normalized,Path(self.tmp.name),index=1,client=client)
+        self.assertEqual(requested,['https://cdn.test/bad','https://cdn.test/good'])
+        self.assertEqual(base64.b64decode(block['data']),self.png)
+
+    def test_animated_stickers_sample_the_whole_clip_as_png(self):
+        frames=[Image.new('RGB',(30,30),color) for color in ('red','green','blue','yellow','purple')]
+        path=Path(self.tmp.name)/'sticker.gif'
+        frames[0].save(path,save_all=True,append_images=frames[1:],duration=[500,100,100,100,500],loop=0)
+        blocks=visual_blocks_from_path(path)
+        images=[block for block in blocks if block['type']=='image']
+        self.assertGreaterEqual(len(images),2)
+        self.assertLessEqual(len(images),4)
+        self.assertTrue(all(block['mimeType']=='image/png' for block in images))
+        first=Image.open(io.BytesIO(base64.b64decode(images[0]['data']))).convert('RGB')
+        last=Image.open(io.BytesIO(base64.b64decode(images[-1]['data']))).convert('RGB')
+        self.assertEqual(first.getpixel((0,0)),(255,0,0))
+        self.assertEqual(last.getpixel((0,0)),(128,0,128))
+
+    def test_history_only_images_are_saved_and_sent_across_multiple_jobs(self):
+        path=Path(self.tmp.name)/'photo.png';path.write_bytes(self.png)
+        store=Store(Path(self.tmp.name)/'db.sqlite3')
+        runtime=DshRuntime(store,Path.cwd(),data_dir=Path(self.tmp.name)/'data')
+        for number in range(2):
+            job={'id':f'job-{number}','event_id':None,'actor_id':'douyin_group','kind':'group_interaction',
+                 'payload':{'platform':'douyin','messages':[{'platform':'douyin','sender_id':'other',
+                     'payload':{'content':{'kind':'image','path':str(path)}}}]}}
+            with patch.object(runtime,'run_turn',return_value={'ok':True}) as turn:
+                runtime.execute_job_sync(job)
+                self.assertEqual(len([b for b in turn.call_args.args[1] if b.get('type')=='image']),1)
+        saved=store.list_media()
+        self.assertEqual(len(saved),2)
+        self.assertEqual({row['event_id'] for row in saved},{'job:job-0','job:job-1'})
+        self.assertTrue(all(Path(row['path']).exists() for row in saved))
+
     def test_runtime_passes_image_blocks_and_removes_temporary_files(self):
         store = Store(Path(self.tmp.name) / 'db.sqlite3')
         cfg = store.get_config('platforms'); cfg['douyin']['read_message_images'] = True; store.set_config('platforms', cfg)
@@ -169,6 +214,24 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         action = self.store.get_action(result['action_id'])
         self.assertEqual(action['status'], 'succeeded')
         self.assertEqual(action['payload']['text'], text)
+
+    async def test_bilibili_private_and_group_picture_payloads_are_visual(self):
+        adapter=BilibiliAdapter(self.store,Path.cwd(),directory=Path(self.tmp.name))
+        adapter._credential=lambda:SimpleNamespace(dedeuserid='99')
+        messages=[{'msg_seqno':i,'sender_uid':88,'msg_type':kind,'timestamp':i,'msg_key':i,
+                   'content':json.dumps({'url':'//cdn.test/photo.png','width':3,'height':3})}
+                  for i,kind in ((11,2),(12,6))]
+        page={'messages':messages,'has_more':False,'min_seqno':11}
+        for session_type in (1,2):
+            adapter._sessions=AsyncMock(return_value=[{'talker_id':123,'session_type':session_type,
+                'ack_seqno':10,'max_seqno':12,'at_seqno':12}])
+            with patch('dsh_companion.platforms.bilibili.session.fetch_session_msgs',AsyncMock(return_value=page)):
+                events=await (adapter.poll_messages() if session_type==1 else adapter.poll_groups())
+                history=await adapter.get_group_history(account_id='99',conversation_id='123')
+            self.assertEqual(len(events),2)
+            for event in events+history:
+                self.assertEqual(event['payload']['content']['kind'],'image')
+                self.assertEqual(event['payload']['content']['image']['originUrls'],['https://cdn.test/photo.png'])
 
     async def test_bilibili_groups_fetch_session_type_two(self):
         adapter = BilibiliAdapter(self.store, Path.cwd(), directory=Path(self.tmp.name))

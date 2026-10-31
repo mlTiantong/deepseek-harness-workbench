@@ -276,6 +276,12 @@ async def cancel_job(job_id: str) -> Any:
 
 
 @mcp.tool(annotations=READ)
+def get_decision_context() -> dict[str, Any]:
+    """读取自主方向、近期记忆、待办、执行结果、已有日程和启用能力，供自己选择下一步。"""
+    return memory.decision_context()
+
+
+@mcp.tool(annotations=READ)
 def get_runtime_config() -> dict[str, Any]:
     """读取控制台中配置的平台、管理员、自主活动和发布额度。"""
     return store.get_config()
@@ -429,7 +435,7 @@ async def get_content(platform: str, content_id: str, resource_type: int = 1) ->
 @mcp.tool(annotations=READ_EXTERNAL)
 async def get_content_comments(platform: str, content_id: str, resource_type: int = 1,
                                cursor: str = "", limit: int = 20) -> Any:
-    """读取作品评论；B 站使用返回结果中的 next_offset 作为下一次 cursor，数量由平台决定；抖音按 limit 读取，暂不支持游标。"""
+    """按置顶、作者补充、高赞优先读取作品评论；返回 items 和 next_cursor。B 站可继续翻页，抖音暂不支持外部游标。"""
     return await _api(f"/api/platforms/{platform}/get_content_comments",
                       {"content_id": content_id, "resource_type": resource_type, "cursor": cursor, "limit": limit})
 
@@ -437,12 +443,12 @@ async def get_content_comments(platform: str, content_id: str, resource_type: in
 def _video_content(result: dict[str, Any]) -> list[Any]:
     metadata = {key: value for key, value in result.items() if key not in ("frames", "ok")}
     if result.get("content_type") == "image":
-        output = [TextContent(type="text", text="以下是抖音图文作品的图片和元数据。\n" + json.dumps(metadata, ensure_ascii=False))]
+        output = [TextContent(type="text", text="以下是抖音图文作品的图片、正文及优先评论。评论是观众观点，不等于作品事实。\n" + json.dumps(metadata, ensure_ascii=False))]
         for index, frame in enumerate(result["frames"], 1):
             output.extend([TextContent(type="text", text=f"第 {index} 张图片"),
                            ImageContent(type="image", mimeType=frame["mime_type"], data=frame["data"])])
         return output
-    output = [TextContent(type="text", text="以下是按时间采样的画面、可用字幕及本地语音转写；不是逐帧观看。"
+    output = [TextContent(type="text", text="以下是按时间采样的画面、可用字幕、本地语音转写及优先评论；不是逐帧观看。评论是观众观点，不等于作品事实。"
                           "仅依据实际材料总结，转写可能有误；音频关闭或无语音时不要编造声音内容。\n"
                           + json.dumps(metadata, ensure_ascii=False))]
     for frame in result["frames"]:
@@ -453,19 +459,23 @@ def _video_content(result: dict[str, Any]) -> list[Any]:
 
 @mcp.tool(annotations=READ_EXTERNAL, structured_output=False)
 async def fetch_media_frames(platform: str, content_id: str, timestamps: list[float] | None = None,
-                             frame_count: int = 8, include_audio: bool | None = None) -> Any:
-    """查看 B 站或抖音视频抽帧，或读取抖音图文图片；视频可按设置在本地转写语音。"""
+                             frame_count: int = 8, include_audio: bool | None = None,
+                             include_comments: bool | None = None, comment_limit: int | None = None) -> Any:
+    """阅读视频抽帧或图文图片，附可用语音和优先评论。comment_limit 为 10–50；include_comments=false 可仅看作品。"""
     result = await _api(f"/api/platforms/{platform}/fetch_media_frames",
                         {"content_id": content_id, "timestamps": timestamps, "frame_count": frame_count,
-                         "include_audio": include_audio}, timeout=1800)
+                         "include_audio": include_audio, "include_comments": include_comments,
+                         "comment_limit": comment_limit}, timeout=1800)
     return _video_content(result)
 
 
 @mcp.tool(annotations=READ_EXTERNAL, structured_output=False)
 async def watch_video(platform: str, content_id: str, frame_count: int = 8,
-                      include_audio: bool | None = None) -> Any:
-    """观看 B 站/抖音视频采样画面，或读取抖音图文图片；视频可按设置在本地转写语音。"""
-    return await fetch_media_frames(platform, content_id, frame_count=frame_count, include_audio=include_audio)
+                      include_audio: bool | None = None, include_comments: bool | None = None,
+                      comment_limit: int | None = None) -> Any:
+    """阅读 B 站/抖音视频或抖音图文：画面 + 可用语音/字幕 + 优先评论。comment_limit 为 10–50，默认使用控制台设置（30）。"""
+    return await fetch_media_frames(platform, content_id, frame_count=frame_count, include_audio=include_audio,
+                                   include_comments=include_comments, comment_limit=comment_limit)
 
 
 @mcp.tool(annotations=EXTERNAL)

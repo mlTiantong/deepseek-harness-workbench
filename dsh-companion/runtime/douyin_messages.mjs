@@ -3,7 +3,15 @@ import { parseMessageContent } from 'douyin-im/protocol'
 export function messageData(event) {
   const group = event.conversationType === 2
   const contact = group ? event.group : event.chatType === 'stranger' ? event.stranger : event.friend
-  const content = event.content ?? parseMessageContent(event.rawContent ?? '', event.messageType)
+  const parsed = event.content ?? parseMessageContent(event.rawContent ?? '', event.messageType)
+  let content = parsed
+  if (parsed.kind === 'emoji') {
+    const raw = typeof event.rawContent === 'string' ? JSON.parse(event.rawContent || '{}') : event.rawContent ?? {}
+    const resource = raw.url ?? {}
+    const urls = [...new Set([...(resource.url_list ?? []), ...(parsed.urls ?? []),
+      parsed.url, resource.uri].filter(url => typeof url === 'string' && /^https?:\/\//.test(url)))]
+    content = { ...parsed, url: urls[0] ?? '', urls }
+  }
   const external = event.serverMessageId ?? event.clientMessageId
   return {
     platform: 'douyin', account_id: String(event.account.uid ?? ''),

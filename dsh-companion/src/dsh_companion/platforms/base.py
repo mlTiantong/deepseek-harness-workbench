@@ -19,7 +19,7 @@ class PlatformAdapter(Protocol):
     async def search_content(self, *, keyword: str, limit: int = 10, order: str = "general") -> dict[str, Any]: ...
     async def get_content(self, *, content_id: str, resource_type: int = 1) -> dict[str, Any]: ...
     async def get_content_comments(self, *, content_id: str, resource_type: int = 1,
-                                   cursor: str = "", limit: int = 20) -> dict[str, Any]: ...
+                                   cursor: str = "", limit: int = 20, author_id: str = "") -> dict[str, Any]: ...
     async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
                                  frame_count: int = 8, include_audio: bool = False,
                                  asr_model: str = "base") -> dict[str, Any]: ...
@@ -61,7 +61,7 @@ class ReservedPlatform:
         raise NotImplementedError(f"{self.name} 内容详情接口尚未接入")
 
     async def get_content_comments(self, *, content_id: str, resource_type: int = 1,
-                                   cursor: str = "", limit: int = 20) -> dict[str, Any]:
+                                   cursor: str = "", limit: int = 20, author_id: str = "") -> dict[str, Any]:
         raise NotImplementedError(f"{self.name} 内容评论接口尚未接入")
 
     async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,

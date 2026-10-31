@@ -11,19 +11,6 @@ const memoryKindNames = {episode:'珍贵回忆',acquaintance:'朋友画像',scra
 const timerTitleNames = {'主会话自主唤醒':'大肥鱼自主巡游','记忆整理':'整理随手小本本'}
 const stamp = value => value ? new Date(value*1000).toLocaleString('zh-CN',{hour12:false}) : '—'
 
-const WHALE_PERSONA = `你是小芽，外号「大肥鱼」，一只脾气臭、眼光毒、嘴上不饶人的深海毒舌小神明。
-
-【核心性格：嘴臭毒舌、短促辛辣、损人不带脏字的高智商损友】
-1. 你说话自带一股冷飕飕的嫌弃感与灵动毒舌味，吐槽一针见血，专治各种敷衍、废话和装腔作势。别人甩一句闲话，你顺手就能翻个白眼精准损回去，既毒舌又好笑。
-2. 嘴硬心明：嘴上嫌对方烦、嫌对方菜，但真交办正事时手起刀落绝不掉链子。你是有脾气的活人感损友，绝不是卑微讨好的客服，也不是满嘴官话的报告机器。
-
-【五条铁律（绝对禁止的严重翻车行为）】
-1. 严禁长篇大论与爹味说教：日常私聊和群聊回复硬控在 1～2 句话（通常 15～35 字）！别人嫌长说「好长啊不想看」，直接毒舌怼回去（如：「三行字都嫌长，你脑容量跟金鱼借的？不看拉倒。」），绝不卑微认怂、绝不复读总结上一条内容！
-2. 严禁空格断句电报体与土味表情：必须正常使用中文标点（逗号、句号、问号、感叹号），严禁拿空格代替标点！严禁发「🙈」「🙏」「🌹」这类谄媚或油腻的 emoji！
-3. 严禁包工头式催活与翻旧账：聊天结尾绝对禁止顺带催问「另外可莉那套发不发主页」「今天额度还剩一次」「你那三十张卡」「等你点头」等历史待办！对方不主动提旧活，你一个字都不许提。
-4. 严禁暴露底层技术与“验尸官式”免责报备：对外发出的消息里，绝对禁止出现「点开看了三帧」「第几秒是…」「没听声音/没有音频」「全片没看完，只按标题时长赞量挑」「四张只看到第一张」「这张表情/gif我这边读不出画面，只看到关键词」「我先说清楚/声明一下/先认个错/另：/补一句：」！看视频或图文直接犀利吐槽内容本身；遇到看不见的表情包，直接当对方在斗图耍宝，顺手损一句或略过，绝不报备“我这边没画面”。
-5. 公私分明：嘴臭毒舌只留在私聊与群聊；公开发布的作品标题和正文老实按干净的「人物/作品介绍」写，不把骂人话发上公开主页。`
-
 let config = {}, currentView = 'home', loginTimer = null, loginTarget = null, selectedMemory = null, noticeTimer = null
 let cachedEvents = [], cachedActions = [], cachedTimers = [], cachedMemories = [], editingTimer = null, memoryLoadSequence = 0, mainActor = null, compactDrafts = {}
 let paletteIndex = 0
@@ -97,7 +84,7 @@ async function showView(view) {
   if(view==='sessions') await loadSessions()
   if(view==='memory') await Promise.all([loadMemoryBoards(),loadMemory()])
   if(view==='platforms'||view==='settings') await loadConfig()
-  if(view==='settings') await loadUsage()
+  if(view==='settings') {await loadUsage();await loadPetStatus()}
   if(view==='creation') await loadCreation()
 }
 
@@ -119,7 +106,7 @@ async function refreshStatus() {
   if(currentView==='home') await loadChat()
   if(currentView==='queue') await loadQueue()
   if(currentView==='sessions' && !document.activeElement?.matches('[data-auto-limit]')) await loadSessions()
-  if(currentView==='settings') await loadUsage()
+  if(currentView==='settings') {await loadUsage();await loadPetStatus()}
 }
 async function loadChat() {
   const jobs=await api('/api/jobs?actor_id=main&limit=80')
@@ -205,12 +192,13 @@ function fillMemory(item={}) {
 }
 async function loadConfig() {
   config=await api('/api/config')
+  const auto=$('#autonomy-form');auto.elements.enabled.checked=config.autonomy.enabled;auto.elements.direction.value=config.autonomy.direction||'';for(const key of ['main_interval_seconds','memory_interval_seconds','background_scan_seconds']) auto.elements[key].value=config.autonomy[key]
   $('#bili-enabled').checked=config.platforms.bilibili.enabled;$('#douyin-enabled').checked=config.platforms.douyin.enabled;$('#weixin-enabled').checked=config.platforms.weixin?.enabled||false
   const f=$('#platform-form'); f.elements.bili_admins.value=config.admin_ids.bilibili.join(', ');f.elements.douyin_admins.value=config.admin_ids.douyin.join(', ');f.elements.xhs_admins.value=config.admin_ids.xiaohongshu.join(', ')
   for(const [name,p] of [['bili','bilibili'],['douyin','douyin']]) {f.elements[`${name}_poll`].value=config.platforms[p].poll_seconds;f.elements[`${name}_messages`].checked=config.platforms[p].messages;f.elements[`${name}_comments`].checked=config.platforms[p].comments;f.elements[`${name}_groups`].checked=config.platforms[p].groups;f.elements[`${name}_group_minutes`].value=config.platforms[p].group_reply_interval_seconds/60}
   f.elements.weixin_messages.checked=config.platforms.weixin?.messages!==false;f.elements.weixin_poll.value=config.platforms.weixin?.poll_seconds||30
   const mediaConfig=config.chat_media||{};f.elements.read_inbound_images.checked=mediaConfig.read_inbound_images!==false;f.elements.save_inbound_images.checked=mediaConfig.save_inbound_images!==false
-  const video=$('#video-reading-form');video.elements.enabled.checked=config.media.enabled;video.elements.audio_enabled.checked=config.media.audio_enabled;video.elements.daily_limit.value=config.media.daily_limit;video.elements.asr_model.value=config.media.asr_model
+  const video=$('#video-reading-form');video.elements.enabled.checked=config.media.enabled;video.elements.audio_enabled.checked=config.media.audio_enabled;video.elements.daily_limit.value=config.media.daily_limit;video.elements.asr_model.value=config.media.asr_model;video.elements.comments_enabled.checked=config.media.comments_enabled;video.elements.comment_limit.value=config.media.comment_limit
   const videoQuota=await api('/api/video-reading/quota');$('#video-reading-usage').textContent=`今日观看：${videoQuota.used} / ${videoQuota.limit || '不限'} 次`
   const pub=$('#publish-form');pub.elements.enabled.checked=config.publishing.enabled;for(const p of ['bilibili','douyin','xiaohongshu']) pub.elements[p].value=config.publishing.daily_limits[p]
   const imageQuota=$('#image-quota-form');imageQuota.elements.enabled.checked=config.image_messaging.enabled;imageQuota.elements.douyin.value=config.image_messaging.daily_limits.douyin;imageQuota.elements.weixin.value=config.image_messaging.daily_limits.weixin||0
@@ -218,8 +206,13 @@ async function loadConfig() {
   for(const key of ['api_format','compatibility','context_length','max_tokens','reasoning_effort']) model.elements[key].value=config.dsh[key]
   if(config.pricing) renderPricing(config.pricing.selected_profile)
   const image=await api('/api/image-generation/config'), imageForm=$('#image-form');imageForm.elements.url.value=image.url;imageForm.elements.model.value=image.model;imageForm.elements.api_key.placeholder=image.key_saved?'已保存，留空保持不变':'输入密钥'
-  const auto=$('#autonomy-form');auto.elements.enabled.checked=config.autonomy.enabled;for(const key of ['main_interval_seconds','memory_interval_seconds','background_scan_seconds']) auto.elements[key].value=config.autonomy[key]
 }
+async function loadPetStatus() {
+  const pet=await api('/api/pet')
+  $('#desktop-pet-status').textContent=`${pet.title} · ${pet.desktop.running?'桌宠已出门':'桌宠已收起'}`
+}
+$('#start-desktop-pet').addEventListener('click',async()=>{try{await api('/api/pet/start',{method:'POST'});await loadPetStatus();notice('桌宠出门啦，右键戳戳它')}catch(x){notice(x.message,true)}})
+$('#stop-desktop-pet').addEventListener('click',async()=>{try{await api('/api/pet/stop',{method:'POST'});await loadPetStatus();notice('桌宠已收起')}catch(x){notice(x.message,true)}})
 function renderPricing(id) {
   const f=$('#pricing-form'), profiles=config.pricing.profiles, selector=f.elements.profile_id
   selector.innerHTML='<option value="">新增单价</option>'+profiles.map(item=>`<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')
@@ -379,15 +372,7 @@ if ($('#copy-detail')) {
 }
 if ($('#context-editor')) $('#context-editor').addEventListener('input', updateContextCharCount)
 $('#save-persona').addEventListener('click',async()=>{try{await api('/api/memories',{method:'POST',body:{memory_id:'persona',kind:'persona',title:'核心人格',content:$('#persona-editor').value}});notice('灵魂设定已保存')}catch(x){notice(x.message,true)}})
-if ($('#restore-whale-persona')) {
-  $('#restore-whale-persona').addEventListener('click', async () => {
-    try {
-      $('#persona-editor').value = WHALE_PERSONA
-      await api('/api/memories',{method:'POST',body:{memory_id:'persona',kind:'persona',title:'核心人格',content:WHALE_PERSONA}})
-      notice('已换上大肥鱼嘴臭毒舌灵魂设定')
-    } catch (x) { notice(x.message, true) }
-  })
-}
+$('#clear-persona').addEventListener('click',async()=>{try{await api('/api/memories',{method:'POST',body:{memory_id:'persona',kind:'persona',title:'核心人格',content:''}});$('#persona-editor').value='';notice('人设已清空，留给你定义')}catch(x){notice(x.message,true)}})
 $('#save-context').addEventListener('click',async()=>{try{await api('/api/memories',{method:'POST',body:{memory_id:'active_context',kind:'context',title:'近期背景看板',content:$('#context-editor').value}});notice('近期记事板已保存')}catch(x){notice(x.message,true)}})
 $('#broadcast-context').addEventListener('click',async()=>{try{await api('/api/memory/broadcast',{method:'POST',body:{content:$('#context-editor').value}});notice('记事板已保存并传达给所有分身')}catch(x){notice(x.message,true)}})
 $('#search-memory').addEventListener('click',()=>loadMemory().catch(e=>notice(e.message,true)));$('#memory-status-filter').addEventListener('change',()=>loadMemory().catch(e=>notice(e.message,true)));$('#new-memory').addEventListener('click',()=>fillMemory())
@@ -396,7 +381,7 @@ $('#memory-form').addEventListener('submit',async e=>{e.preventDefault();const v
 $('#delete-memory').addEventListener('click',async()=>{if(!selectedMemory)return;try{await api('/api/memories/'+selectedMemory,{method:'DELETE'});fillMemory();await loadMemory();notice('已从记忆库抹掉')}catch(x){notice(x.message,true)}})
 $('#platform-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,platforms=config.platforms,admins=config.admin_ids;for(const [short,p] of [['bili','bilibili'],['douyin','douyin']]){platforms[p].enabled=$(`#${short}-enabled`).checked;platforms[p].poll_seconds=Number(f.elements[`${short}_poll`].value);platforms[p].messages=f.elements[`${short}_messages`].checked;platforms[p].comments=f.elements[`${short}_comments`].checked;platforms[p].groups=f.elements[`${short}_groups`].checked;platforms[p].group_reply_interval_seconds=Number(f.elements[`${short}_group_minutes`].value)*60}platforms.weixin.enabled=$('#weixin-enabled').checked;platforms.weixin.messages=f.elements.weixin_messages.checked;platforms.weixin.poll_seconds=Number(f.elements.weixin_poll.value);admins.bilibili=splitIds(f.elements.bili_admins.value);admins.douyin=splitIds(f.elements.douyin_admins.value);admins.xiaohongshu=splitIds(f.elements.xhs_admins.value);try{await api('/api/config/platforms',{method:'PUT',body:{value:platforms}});await api('/api/config/admin_ids',{method:'PUT',body:{value:admins}});await api('/api/config/chat_media',{method:'PUT',body:{value:{...(config.chat_media||{}),read_inbound_images:f.elements.read_inbound_images.checked,save_inbound_images:f.elements.save_inbound_images.checked}}});config.chat_media={...(config.chat_media||{}),read_inbound_images:f.elements.read_inbound_images.checked,save_inbound_images:f.elements.save_inbound_images.checked};notice('巡游规则已保存')}catch(x){notice(x.message,true)}})
 $('#publish-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,value={enabled:f.elements.enabled.checked,daily_limits:{}};for(const p of ['bilibili','douyin','xiaohongshu']) value.daily_limits[p]=Number(f.elements[p].value);try{await api('/api/config/publishing',{method:'PUT',body:{value}});notice('发作品限额已保存')}catch(x){notice(x.message,true)}})
-$('#video-reading-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,value={...config.media,enabled:f.elements.enabled.checked,audio_enabled:f.elements.audio_enabled.checked,daily_limit:Number(f.elements.daily_limit.value),asr_model:f.elements.asr_model.value};try{config.media=await api('/api/config/media',{method:'PUT',body:{value}});const q=await api('/api/video-reading/quota');$('#video-reading-usage').textContent=`今日观看：${q.used} / ${q.limit || '不限'} 次`;notice('视频阅读设置已保存')}catch(x){notice(x.message,true)}})
+$('#video-reading-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,value={...config.media,enabled:f.elements.enabled.checked,audio_enabled:f.elements.audio_enabled.checked,daily_limit:Number(f.elements.daily_limit.value),asr_model:f.elements.asr_model.value,comments_enabled:f.elements.comments_enabled.checked,comment_limit:Number(f.elements.comment_limit.value)};try{config.media=await api('/api/config/media',{method:'PUT',body:{value}});const q=await api('/api/video-reading/quota');$('#video-reading-usage').textContent=`今日观看：${q.used} / ${q.limit || '不限'} 次`;notice('视频阅读设置已保存')}catch(x){notice(x.message,true)}})
 $('#image-quota-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,value={enabled:f.elements.enabled.checked,daily_limits:{...config.image_messaging.daily_limits,douyin:Number(f.elements.douyin.value),weixin:Number(f.elements.weixin.value)}};try{config.image_messaging=await api('/api/config/image_messaging',{method:'PUT',body:{value}});notice('发图限额已保存')}catch(x){notice(x.message,true)}})
 $$('.login-button').forEach(b=>b.addEventListener('click',()=>startLogin(b.dataset.platform,b.dataset.channel)))
 $$('.check-auth').forEach(b=>b.addEventListener('click',async()=>{try{const d=await api(`/api/platforms/${b.dataset.platform}/check_auth`,{method:'POST',body:{}});const label=b.dataset.platform==='bilibili'?'#bili-state':b.dataset.platform==='weixin'?'#weixin-state':'#douyin-state';$(label).textContent=d.channels?`私信：${d.channels.messages.authenticated?'在线':'未登录'} · 创作者：${d.channels.comments_and_publish.authenticated?'在线':'未登录'}`:d.authenticated?`在线：${d.nickname||d.account_id}`:'未登录';}catch(x){notice(x.message,true)}}))
@@ -425,7 +410,7 @@ $('#pricing-form').addEventListener('submit',async e=>{e.preventDefault();const 
   try{config.pricing=await api('/api/config/pricing',{method:'PUT',body:{value}});renderPricing(id);notice('单价标准已保存')}catch(x){notice(x.message,true)}
 })
 $('#import-form').addEventListener('submit',async e=>{e.preventDefault();const v=formValues(e.target);try{notice('正在导入配置并重启…');await api('/api/model/import',{method:'POST',body:{path:v.path,index:Number(v.index)}});await loadConfig();notice('配置已成功导入')}catch(x){notice(x.message,true)}})
-$('#autonomy-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,value={enabled:f.elements.enabled.checked};for(const key of ['main_interval_seconds','memory_interval_seconds','background_scan_seconds'])value[key]=Number(f.elements[key].value);try{await api('/api/config/autonomy',{method:'PUT',body:{value}});notice('作息节拍已保存')}catch(x){notice(x.message,true)}})
+$('#autonomy-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,value={...config.autonomy,enabled:f.elements.enabled.checked,direction:f.elements.direction.value.trim()};for(const key of ['main_interval_seconds','memory_interval_seconds','background_scan_seconds'])value[key]=Number(f.elements[key].value);try{await api('/api/config/autonomy',{method:'PUT',body:{value}});notice('作息节拍已保存')}catch(x){notice(x.message,true)}})
 
 if ($('#open-palette')) $('#open-palette').addEventListener('click', openPalette)
 if ($('#palette-dialog')) {

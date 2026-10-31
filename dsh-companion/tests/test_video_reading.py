@@ -32,6 +32,7 @@ class VideoReadingTests(unittest.IsolatedAsyncioTestCase):
             fake = AsyncMock(return_value={'content_id': 'BVtest', 'duration': 10,
                                            'frames': [{'time': 5}], 'audio_status': 'disabled'})
             service.adapters['bilibili'].fetch_media_frames = fake
+            service.adapters['bilibili'].get_content_comments = AsyncMock(return_value={'items': [], 'count': 0})
             result = await service.fetch_media_frames('bilibili', content_id='BVtest')
             self.assertEqual(result['quota']['remaining'], 0)
             self.assertFalse(fake.await_args.kwargs['include_audio'])

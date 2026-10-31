@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .comment_reading import PRIORITY
 from .platforms.base import ReservedPlatform
 from .platforms.bilibili import BilibiliAdapter
 from .platforms.douyin import DouyinAdapter
@@ -21,6 +22,7 @@ class PlatformService:
         self.scheduler = scheduler
         self.group_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
         self.media_lock = asyncio.Lock()
+        self.media_activity: dict[str, Any] | None = None
         base = Path(data_dir).resolve() / "platforms" if data_dir else Path(root).resolve() / "var/platforms"
         self.adapters = {"bilibili": BilibiliAdapter(store, root, directory=base / "bilibili"),
                          "douyin": DouyinAdapter(store, root, scheduler=scheduler, data_dir=data_dir),
@@ -136,7 +138,8 @@ class PlatformService:
                 "limit": limit, "remaining": max(0, limit - used) if limit else None}
 
     async def fetch_media_frames(self, platform: str, *, content_id: str, timestamps: list[float] | None = None,
-                                 frame_count: int = 8, include_audio: bool | None = None) -> dict[str, Any]:
+                                 frame_count: int = 8, include_audio: bool | None = None,
+                                 include_comments: bool | None = None, comment_limit: int | None = None) -> dict[str, Any]:
         async with self.media_lock:
             config = self.store.get_config("media")
             if not config["enabled"]:
@@ -146,18 +149,36 @@ class PlatformService:
             quota = self.video_quota()
             if quota["limit"] and quota["used"] >= quota["limit"]:
                 raise ValueError("今日视频阅读额度已用完")
+            limit = int(comment_limit if comment_limit is not None else config.get("comment_limit", 30))
+            if not 10 <= limit <= 50:
+                raise ValueError("每次阅读评论数量应为 10 至 50 条")
+            read_comments = config.get("comments_enabled", True) and include_comments is not False
             audio = config["audio_enabled"] and include_audio is not False
             action = self.store.create_action(platform, "watch_video", {"content_id": content_id,
                                               "frame_count": frame_count, "include_audio": audio})
+            self.media_activity = {"platform": platform, "content_id": content_id, "phase": "frames"}
             try:
-                result = await self.adapters[platform].fetch_media_frames(
-                    content_id=content_id, timestamps=timestamps, frame_count=frame_count,
-                    include_audio=audio, asr_model=config["asr_model"])
-            except Exception as exc:
-                self.store.finish_action(action["id"], error=f"{type(exc).__name__}: {exc}")
-                raise
-            self.store.finish_action(action["id"], result={"content_id": result["content_id"],
-                "duration": result["duration"], "frame_count": len(result["frames"]),
-                "audio_status": result["audio_status"]})
-            result["quota"] = self.video_quota()
-            return result
+                try:
+                    result = await self.adapters[platform].fetch_media_frames(
+                        content_id=content_id, timestamps=timestamps, frame_count=frame_count,
+                        include_audio=audio, asr_model=config["asr_model"])
+                except Exception as exc:
+                    self.store.finish_action(action["id"], error=f"{type(exc).__name__}: {exc}")
+                    raise
+                self.store.finish_action(action["id"], result={"content_id": result["content_id"],
+                    "duration": result["duration"], "frame_count": len(result["frames"]),
+                    "audio_status": result["audio_status"]})
+                result["comments"] = {"status": "disabled", "items": [], "count": 0,
+                                      "requested_limit": limit, "priority": PRIORITY}
+                if read_comments:
+                    self.media_activity["phase"] = "comments"
+                    try:
+                        comments = await self.adapters[platform].get_content_comments(
+                            content_id=result["content_id"], limit=limit, author_id=str(result.get("author_id") or ""))
+                        result["comments"] = {**comments, "status": "ok" if comments["count"] else "empty"}
+                    except Exception as exc:
+                        result["comments"].update(status="error", error=str(exc))
+                result["quota"] = self.video_quota()
+                return result
+            finally:
+                self.media_activity = None

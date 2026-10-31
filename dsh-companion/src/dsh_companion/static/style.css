@@ -1741,3 +1741,8 @@ dialog::backdrop {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* 桌宠入口与自主方向 */
+.pet-controls { margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid #e1eaff; }
+.pet-controls h3 { margin: 0 0 10px; font-size: 15px; }
+.pet-controls p { line-height: 1.6; }

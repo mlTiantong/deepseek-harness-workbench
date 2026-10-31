@@ -143,17 +143,23 @@ class SessionTests(unittest.TestCase):
                 self.runtime.run_turn('main','hello')
         self.assertEqual(self.runtime.harness.run.call_count,1)
 
-    def test_autonomous_browsing_instruction_only_when_douyin_enabled(self):
+    def test_autonomous_turn_uses_direction_and_current_progress_not_fixed_browsing(self):
         job={'actor_id':'main','kind':'autonomous_main','id':'job','payload':{},'event_id':None}
-        cfg=self.store.get_config('platforms'); cfg['douyin']['enabled']=True
-        self.store.set_config('platforms',cfg)
-        with patch.object(self.runtime,'run_turn',return_value={'ok':True}) as run:
-            self.runtime.execute_job_sync(job)
-            self.assertIn('实际调用 browse_douyin_recommended',run.call_args.args[1])
-        cfg['douyin']['enabled']=False; self.store.set_config('platforms',cfg)
-        with patch.object(self.runtime,'run_turn',return_value={'ok':True}) as run:
-            self.runtime.execute_job_sync(job)
-            self.assertNotIn('实际调用 browse_douyin_recommended',run.call_args.args[1])
+        cfg=self.store.get_config('autonomy'); cfg['direction']='研究城市夜景，做一份拍摄指南'
+        self.store.set_config('autonomy',cfg)
+        self.store.create_job('media','scheduled',{'instruction':'整理夜景拍摄参考'})
+        self.runtime.memory.add_scratchpad_note('已确定手持和三脚架两条路线')
+        for enabled in (True, False):
+            cfg=self.store.get_config('platforms'); cfg['douyin']['enabled']=enabled
+            self.store.set_config('platforms',cfg)
+            with patch.object(self.runtime,'run_turn',return_value={'ok':True}) as run:
+                self.runtime.execute_job_sync(job)
+                prompt=run.call_args.args[1]
+                self.assertIn('研究城市夜景',prompt)
+                self.assertIn('整理夜景拍摄参考',prompt)
+                self.assertIn('手持和三脚架',prompt)
+                self.assertIn('不强制刷推荐',prompt)
+                self.assertNotIn('实际调用 browse_douyin_recommended',prompt)
 
     def test_session_controls_enqueue_non_autonomous_work_for_each_actor(self):
         app=create_app(Path.cwd(),data_dir=self.root/'app'); client=TestClient(app)

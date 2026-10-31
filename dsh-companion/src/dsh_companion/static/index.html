@@ -341,10 +341,10 @@
               <h2>灵魂设定</h2>
               <span class="tag accent-tag">小芽 · 大肥鱼</span>
             </div>
-            <textarea id="persona-editor" class="editor" rows="11" placeholder="写下大肥鱼的性格底色与说话习惯…"></textarea>
+            <textarea id="persona-editor" class="editor" rows="11" placeholder="默认没有人设。留空，或写下你希望的性格与说话习惯…"></textarea>
             <div class="button-row">
               <button id="save-persona" class="button primary" type="button">保存灵魂设定</button>
-              <button id="restore-whale-persona" class="button outline" type="button">一键载入大肥鱼毒舌人格</button>
+              <button id="clear-persona" class="button outline" type="button">清空人设</button>
             </div>
           </article>
 
@@ -565,10 +565,15 @@
                 <div class="checkbox-row">
                   <label><input type="checkbox" name="enabled"> <span>开启视频阅读</span></label>
                   <label><input type="checkbox" name="audio_enabled"> <span>本地转写视频语音</span></label>
+                  <label><input type="checkbox" name="comments_enabled"> <span>阅读视频 / 图文评论</span></label>
                 </div>
                 <div class="form-row">
                   <label>每日观看次数（0 表示不限）<input type="number" min="0" name="daily_limit" required></label>
                   <label>语音模型<select name="asr_model"><option value="base">base（轻量）</option><option value="small">small（更准确）</option><option value="tiny">tiny（最快）</option></select></label>
+                </div>
+                <div class="form-row">
+                  <label>每次评论数量（10–50 条）<input type="number" min="10" max="50" name="comment_limit" required></label>
+                  <p>置顶 → 作者补充 → 高赞；与画面和语音一起阅读。</p>
                 </div>
                 <p id="video-reading-usage">今日观看：—</p>
                 <p>语音在本机转写，首次使用需下载模型；非语音会尽量过滤。</p>
@@ -807,7 +812,21 @@
               <div class="card-heading compact">
                 <h2>生物钟与作息节拍</h2>
               </div>
+              <div class="pet-controls">
+                <h3>桌上的大肥鱼</h3>
+                <p id="desktop-pet-status">桌宠还没出门</p>
+                <p>鲸鱼娘随任务切换表情，显示看作品、读评论、创作和回消息；点击看分工，右键打开工作台或休息。</p>
+                <div class="button-row">
+                  <button id="start-desktop-pet" class="button outline" type="button">叫桌宠出来</button>
+                  <button id="stop-desktop-pet" class="button outline" type="button">收起桌宠</button>
+                </div>
+                <p>打开后会随工作台启动，收起后取消自动启动。</p>
+              </div>
               <form id="autonomy-form">
+                <label>自主方向
+                  <textarea name="direction" rows="3" placeholder="想让它长期探索或推进什么？留空时，结合对话、记忆和现有素材自己决定。"></textarea>
+                </label>
+                <p>每次醒来自己选有价值的事，直接执行或分工；不固定刷推荐，也不凑数汇报。</p>
                 <label class="checkbox-row">
                   <input name="enabled" type="checkbox">
                   <span>允许肥鱼平时自己四处逛逛</span>
@@ -887,6 +906,6 @@
     <div id="palette-list" class="palette-list"></div>
   </dialog>
 
-  <script src="/assets/app.js?v=20261031_video" defer></script>
+  <script src="/assets/app.js?v=20261031_comments_pet" defer></script>
 </body>
 </html>

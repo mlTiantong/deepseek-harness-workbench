@@ -14,6 +14,10 @@
 | `dsh-douyin-life` | 0.2.1 | 本地抖音工作流扩展 | 本项目本地构建包，未上传私有运行数据 |
 | `dsh_douyin_tools` | Git 子模块 | Companion 使用的抖音网页 MCP 和相关工具 | [kdcadmin/dsh_douyin_tools](https://github.com/kdcadmin/dsh_douyin_tools) |
 
+## 本项目桌宠
+
+集成 [wraven68/deepseek-harness-pet](https://github.com/wraven68/deepseek-harness-pet) 的 MIT 桌宠窗口代码，固定上游版本 `727554719360d58c49a16d3f4a4cc736ec95b4d8`。角色改用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的 17 段迷你 Q 版透明动画（署名、非商业、CC BY-NC-SA 4.0）。本项目用 Companion 真实任务和工具状态区分回消息、刷视频、读评论、写稿等动作，保留角色分工、工作台入口与暂停 / 恢复。无需给现有 DSH profile 安装插件。
+
 ## 运行时依赖
 
 `dsh-companion` 还依赖 `deepseek-harness-sdk`、`@deepseek-ai/dsh`、`bilibili-api-python`、`douyin-im`、Playwright、FastAPI、MCP SDK、imageio-ffmpeg 和 faster-whisper。完整版本约束见 [`dsh-companion/pyproject.toml`](dsh-companion/pyproject.toml) 与 [`dsh-companion/runtime/package.json`](dsh-companion/runtime/package.json)。

@@ -1,8 +1,12 @@
 ---
 name: companion-media
-description: 观看视频、理解画面与字幕并总结分享。
+description: 综合视频画面、语音、图文与优先评论，提炼有价值的发现。
 ---
 # 媒体工作者
-使用 browse_trending、search_content 寻找内容。用 watch_video 传 B 站或抖音作品链接/ID，取得覆盖全片的时间标记画面；需要精看某处时使用 fetch_media_frames 指定时间点。B 站有可用字幕时一并返回；开启音频时通过本机 FFmpeg 和 Whisper 获取语音转写，VAD 尝试过滤非语音。基于画面、转写和字幕总结；采样不是完整逐帧观看，转写可能有误；音频关闭或无转写时不要编造。
+根据任务目标自己决定找什么、读什么、是否需要精看或继续查证。browse_trending、search_content 和 browse_douyin_recommended 是可选入口，不必全部执行。
 
-分享总结时，根据任务中明确提供的收件人或群，使用 send_message 或 send_group_message；先确认平台、账号和会话 ID。不要把作品标题或简介当作已观看视频的证据。
+用 watch_video 阅读 B 站/抖音视频或抖音图文；结果包含时间标记画面/图文图片、正文、可用字幕与本地语音转写，以及优先评论。评论按置顶、作者补充、高赞排序，默认 30 条；按信息密度用 comment_limit 选择 10–50 条。要只读作品时可传 include_comments=false；深入某段用 fetch_media_frames 指定时间点，深入讨论用 get_content_comments。
+
+把作品内容与观众反应一起理解：评论中有价值的补充、争议和疑问可作为进一步探索的线索，但不能把评论观点当成画面或声音里的事实。总结聚焦作品内容、自己的判断和任务需要的发现，不做工具流水汇报。
+
+若任务包含分享，用 send_message 或 send_group_message 发到任务提供的会话；若是研究或创作素材，保留关键结论、真实作品链接与下一步，将成果交回委派角色。各角色使用共享人格；人格为空时不套默认性格。

@@ -13,6 +13,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT / "vendor/douyin-tools/vendor/douyin-mcp"))
 import mcp_server as upstream  # noqa: E402
+from dsh_companion.comment_reading import comments_result, normalize_comment, prioritize_comments
 
 
 def _own_post(item: dict, account_id: str) -> dict | None:
@@ -71,6 +72,41 @@ async def companion_my_posts(limit: int = 20, cursor: str = "0") -> str:
         return json.dumps({"ok": True, "account_id": account_id, "items": items,
                            "next_cursor": str(data.get("max_cursor") or "0"),
                            "has_more": bool(data.get("has_more"))}, ensure_ascii=False)
+
+
+@upstream.mcp.tool()
+async def companion_read_comments(content_id: str, limit: int = 30, author_id: str = "") -> str:
+    """Read ranked comments with original IDs, author identity and like counts."""
+    aid = upstream._extract_aweme_id(content_id)
+    if not aid:
+        raise ValueError("需要抖音作品 ID 或作品链接")
+    async with upstream._browser.lock:
+        page = await upstream._browser.page()
+        await upstream._goto(page, upstream.VIDEO_URL.format(aweme_id=aid), settle=2)
+        items = []
+        cursor = 0
+        while True:
+            data = await page.evaluate("""async ({aid, cursor}) => {
+                const q = new URLSearchParams({device_platform:'webapp', aid:'6383',
+                    channel:'channel_pc_web', aweme_id:aid, cursor:String(cursor), count:'20', item_type:'0'});
+                const r = await fetch('/aweme/v1/web/comment/list/?' + q, {credentials:'include'});
+                if (!r.ok) throw new Error('评论 HTTP ' + r.status);
+                return await r.json();
+            }""", {"aid": aid, "cursor": cursor})
+            if data.get("status_code", 0) != 0:
+                raise RuntimeError(f"抖音评论接口返回错误：{data.get('status_code')}")
+            for item in data.get("comments") or []:
+                items.append(normalize_comment("douyin", item, author_id=author_id))
+                for reply in item.get("reply_comment") or []:
+                    items.append(normalize_comment("douyin", reply, author_id=author_id,
+                                                   parent_id=str(item["cid"])))
+            next_cursor = int(data.get("cursor") or 0)
+            has_more = bool(data.get("has_more"))
+            if len(prioritize_comments(items, limit)) >= limit or not has_more or next_cursor == cursor:
+                result = comments_result("douyin", aid, items, limit,
+                                         next_cursor=str(next_cursor), has_more=has_more)
+                return json.dumps({"ok": True, **result}, ensure_ascii=False)
+            cursor = next_cursor
 
 
 async def _download_note_image(page, url: str) -> bytes:
@@ -138,6 +174,7 @@ async def companion_video_frames(content_id: str, timestamps: list[float] | None
                 frames.append({"mime_type": "image/jpeg", "data": base64.b64encode(out.getvalue()).decode("ascii")})
             return json.dumps({"ok": True, "platform": "douyin", "content_id": content_id,
                                "content_type": "image", "title": detail.get("desc") or "",
+                               "author_id": str((detail.get("author") or {}).get("uid") or ""),
                                "duration": 0, "frames": frames, "image_count": len(images),
                                "audio_understood": False}, ensure_ascii=False)
         player = page.locator("video:visible").first
@@ -178,7 +215,9 @@ async def companion_video_frames(content_id: str, timestamps: list[float] | None
             image = compressed.getvalue()
             frames.append({"time": actual, "mime_type": "image/jpeg", "data": base64.b64encode(image).decode("ascii")})
         return json.dumps({"ok": True, "platform": "douyin", "content_id": content_id,
-                           "title": await page.title(), "duration": duration, "frames": frames,
+                           "title": detail.get("desc") or await page.title(),
+                           "author_id": str((detail.get("author") or {}).get("uid") or ""),
+                           "duration": duration, "frames": frames,
                            "subtitles": "", "audio_understood": False}, ensure_ascii=False)
 
 

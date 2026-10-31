@@ -79,6 +79,40 @@ class MemoryCenter:
         return {"episodes": len(episodes), "acquaintances": len(acquaintances),
                 "archived_notes": self.archive_scratchpad(note_ids)}
 
+    def decision_context(self) -> dict[str, Any]:
+        """给自主决策提供当前目标、进展和可用能力，不规定它必须做什么。"""
+        autonomy = self.store.get_config("autonomy")
+        config = self.store.get_config()
+        pending = self.store.list_jobs(status="running", limit=20) + self.store.list_jobs(status="ready", limit=20)
+        with self.store.connect() as db:
+            completed = [dict(row) for row in db.execute("""SELECT id,actor_id,kind,status,event_id,error,
+                COALESCE(json_extract(payload,'$.instruction'),json_extract(payload,'$.text'),'') AS instruction,
+                COALESCE(json_extract(payload,'$.platform'),'') AS platform,
+                substr(COALESCE(json_extract(result,'$.response'),json_extract(result,'$.text'),''),1,1200) AS result
+                FROM jobs WHERE status IN ('succeeded','failed') ORDER BY finished_at DESC LIMIT 6""")]
+        def brief(job):
+            payload = job["payload"]
+            result = job["result"]
+            if isinstance(result, dict):
+                result = result.get("response") or result.get("text") or result.get("result") or ""
+            return {"id": job["id"], "actor_id": job["actor_id"], "kind": job["kind"],
+                    "status": job["status"], "instruction": payload.get("instruction") or payload.get("text") or "",
+                    "platform": payload.get("platform", ""), "event_id": job["event_id"],
+                    "result": str(result or "")[:1200], "error": job["error"]}
+        return {"direction": autonomy.get("direction", ""),
+                "recent_context": self.get_recent_context(),
+                "notes": self.list_scratchpad(limit=10),
+                "pending_jobs": [brief(job) for job in pending],
+                "recent_results": completed,
+                "timers": self.store.list_timers(enabled=True),
+                "capabilities": {
+                    "platforms": {name: settings for name, settings in config["platforms"].items()
+                                  if name != "xiaohongshu" and settings["enabled"]},
+                    "media": config["media"], "publishing": config["publishing"],
+                    "image_generation": bool(config["image_generation"].get("url")),
+                    "creation_folder": config["creation_folder"],
+                    "paused": config["paused"], "autonomy_enabled": autonomy["enabled"]}}
+
     def assemble_context(self, *, actor_id: str, platform: str = "", sender_id: str = "") -> dict[str, Any]:
         person = self.get_acquaintance(platform, str(sender_id)) if platform and sender_id else None
         return {"actor_id": actor_id, "persona": self.get_persona(),

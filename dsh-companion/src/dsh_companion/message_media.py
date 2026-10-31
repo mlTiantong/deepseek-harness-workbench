@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
+import io
 from pathlib import Path
 from typing import Any
 
 import httpx
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from PIL import Image
 
 
 def _mime(data: bytes) -> str | None:
@@ -42,6 +45,36 @@ def image_block_from_path(path: str | Path) -> dict[str, str]:
             'data': base64.b64encode(data).decode('ascii'), 'path': str(file_path.resolve())}
 
 
+def visual_blocks_from_path(path: str | Path, *, max_frames: int = 4) -> list[dict[str, str]]:
+    """An animated sticker is sampled across its duration, not frozen at frame 0."""
+    with Image.open(path) as image:
+        if getattr(image, 'n_frames', 1) == 1:
+            block = image_block_from_path(path)
+            return [{key: block[key] for key in ('type', 'mimeType', 'data')}]
+        durations = []
+        for index in range(image.n_frames):
+            image.seek(index)
+            durations.append(image.info.get('duration', 100) or 100)
+        total = sum(durations)
+        count = min(max_frames, image.n_frames)
+        targets = [total * i / (count-1) for i in range(count)]
+        indices=[];elapsed=0;target=0
+        for index, duration in enumerate(durations):
+            while target < count and (targets[target] < elapsed+duration or index == len(durations)-1):
+                if index not in indices:indices.append(index)
+                target += 1
+            elapsed += duration
+        blocks=[]
+        for index in indices:
+            image.seek(index)
+            frame=image.convert('RGBA')
+            frame.thumbnail((768,768), Image.Resampling.LANCZOS)
+            output=io.BytesIO();frame.save(output,format='PNG')
+            blocks.extend([{'type':'text','text':f'动图第 {index+1}/{image.n_frames} 帧'},
+                {'type':'image','mimeType':'image/png','data':base64.b64encode(output.getvalue()).decode('ascii')}])
+        return blocks
+
+
 def persist_image_block(block: dict[str, Any], folder: Path, *, stem: str = 'message') -> dict[str, Any] | None:
     """把临时图片块复制到媒体库，并返回文件路径、哈希和 MIME。"""
     source = block.get('path')
@@ -61,9 +94,30 @@ def persist_image_block(block: dict[str, Any], folder: Path, *, stem: str = 'mes
             'sha256': digest, 'size': len(data)}
 
 
+def normalize_message_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """Resolve Douyin sticker URL lists, including messages saved before this fix."""
+    content = dict(payload.get('content') or {})
+    if content.get('kind') != 'emoji':
+        return content
+    raw = payload.get('raw_content') or {}
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    resource = raw.get('url') or {}
+    candidates = list(content.get('urls') or [])
+    candidates.append(content.get('url') or '')
+    if isinstance(resource, dict):
+        candidates.extend(resource.get('url_list') or [])
+        candidates.append(resource.get('uri') or '')
+    elif isinstance(resource, str):
+        candidates.append(resource)
+    content['urls'] = list(dict.fromkeys(url for url in candidates if url.startswith(('https://', 'http://'))))
+    content['url'] = next(iter(content['urls']), '')
+    return content
+
+
 def _sources(content: dict[str, Any]) -> tuple[list[str], str]:
     if content.get('kind') == 'emoji':
-        return [content.get('url', '')], ''
+        return list(content.get('urls') or [content.get('url', '')]), ''
     if content.get('kind') == 'image':
         image = content.get('image') or {}
         urls = [url for key in ('originUrls', 'largeUrls', 'mediumUrls', 'thumbUrls')
@@ -109,4 +163,4 @@ def cache_image(content: dict[str, Any], folder: Path, *, index: int,
     finally:
         if owned:
             client.close()
-    raise RuntimeError('抖音图片读取失败：' + '; '.join(errors))
+    raise RuntimeError('平台图片读取失败：' + '; '.join(errors))

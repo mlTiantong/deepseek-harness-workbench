@@ -37,6 +37,7 @@ ACTOR_PRIORITIES = {
 
 DEFAULT_CONFIG = {
     "paused": False,
+    "desktop_pet": {"enabled": False, "scale": 0.55},
     "admin_ids": {"bilibili": [], "douyin": [], "xiaohongshu": [], "weixin": []},
     "platforms": {
         "bilibili": {"enabled": False, "messages": True, "comments": True, "poll_seconds": 30,
@@ -47,7 +48,7 @@ DEFAULT_CONFIG = {
         "weixin": {"enabled": False, "messages": True, "comments": False, "poll_seconds": 30,
                    "groups": False, "group_reply_interval_seconds": 300},
     },
-    "autonomy": {"enabled": True, "main_interval_seconds": 3600,
+    "autonomy": {"enabled": True, "direction": "", "main_interval_seconds": 3600,
                  "memory_interval_seconds": 21600, "background_scan_seconds": 60},
     "publishing": {"enabled": False, "daily_limits": {"bilibili": 3, "douyin": 3, "xiaohongshu": 3}},
     "image_messaging": {"enabled": True, "daily_limits": {"bilibili": 0, "douyin": 3, "xiaohongshu": 0, "weixin": 3}},
@@ -57,7 +58,8 @@ DEFAULT_CONFIG = {
     "dsh": {"provider": "deepseek-official", "model": "deepseek-v4-flash",
             "profile": "sdk", "base_url": "", "reasoning_effort": "low", "max_tokens": 8192,
             "context_length": 200000, "api_format": "openai-completions", "compatibility": "deepseek"},
-    "media": {"enabled": False, "audio_enabled": True, "daily_limit": 20, "asr_model": "base"},
+    "media": {"enabled": False, "audio_enabled": True, "daily_limit": 20, "asr_model": "base",
+              "comments_enabled": True, "comment_limit": 30},
     "image_generation": {"url": "", "model": ""},
     "session_compaction": {actor_id: {"enabled": False, "threshold_tokens": 100000} for actor_id in ACTORS},
     "pricing": DEFAULT_PRICING,
@@ -283,6 +285,9 @@ class Store:
             db.execute("""INSERT INTO config(key,value,updated_at) VALUES('chat_media',?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at""",
                        (_json(chat_media), now))
+            autonomy = json.loads(db.execute("SELECT value FROM config WHERE key='autonomy'").fetchone()[0])
+            autonomy.setdefault("direction", "")
+            db.execute("UPDATE config SET value=? WHERE key='autonomy'", (_json(autonomy),))
             video_media = json.loads(db.execute("SELECT value FROM config WHERE key='media'").fetchone()[0])
             for field, value in DEFAULT_CONFIG["media"].items():
                 video_media.setdefault(field, value)

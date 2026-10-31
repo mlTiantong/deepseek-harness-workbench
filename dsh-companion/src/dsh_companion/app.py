@@ -18,6 +18,7 @@ from .dsh_runtime import DshRuntime
 from .image_generation import ImageGeneration
 from .memory import MemoryCenter
 from .platform_service import PlatformService
+from .pet import DesktopPet, desktop_status
 from .scheduler import Scheduler
 from .store import Store
 
@@ -36,6 +37,7 @@ class Companion:
         self.platforms = PlatformService(self.store, self.root, self.scheduler, data_dir=self.data_dir)
         self.creation = CreationFolder(self.store, self.scheduler, self.root)
         self.images = ImageGeneration(self.store, self.data_dir)
+        self.pet = DesktopPet(self.store, self.data_dir, api_url)
         self.listeners: list[asyncio.Task] = []
         self.listener_status: dict[str, dict[str, Any]] = {}
 
@@ -54,6 +56,8 @@ class Companion:
         await self.platforms.adapters["douyin"].start(auto_restore=dy["enabled"] and (dy["messages"] or dy.get("groups", False)))
         wx = self.store.get_config("platforms")["weixin"]
         await self.platforms.adapters["weixin"].start(auto_restore=wx["enabled"] and wx.get("messages", False))
+        if self.store.get_config("desktop_pet")["enabled"]:
+            self.pet.start()
         self.ensure_default_timers()
         await self.scheduler.start()
         for platform, channel in (("bilibili", "messages"), ("bilibili", "comments"),
@@ -64,6 +68,7 @@ class Companion:
         self.listeners.append(asyncio.create_task(self.auto_compaction(), name="auto-compaction"))
 
     async def stop(self) -> None:
+        self.pet.stop()
         for task in self.listeners:
             task.cancel()
         if self.listeners:
@@ -219,6 +224,19 @@ def create_app(root: str | Path, *, data_dir: str | Path | None = None,
                 "listeners": companion.listener_status, "metrics": companion.store.job_metrics(),
                 "douyin_im": companion.platforms.adapters["douyin"].im.status,
                 "weixin": companion.platforms.adapters["weixin"].status}
+
+    @app.get("/api/pet")
+    async def pet_status():
+        return {**desktop_status(companion), "desktop": companion.pet.status()}
+
+    @app.post("/api/pet/{operation}")
+    async def pet_control(operation: str):
+        if operation not in ("start", "stop"):
+            raise HTTPException(status_code=404, detail="未知桌宠操作")
+        config = companion.store.get_config("desktop_pet")
+        config["enabled"] = operation == "start"
+        companion.store.set_config("desktop_pet", config)
+        return getattr(companion.pet, operation)()
 
     @app.get("/api/config")
     async def get_config():

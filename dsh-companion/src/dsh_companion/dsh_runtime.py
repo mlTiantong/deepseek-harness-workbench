@@ -17,7 +17,7 @@ from deepseek_harness import DeepSeekHarness
 
 from .billing import selected_profile
 from .memory import MemoryCenter
-from .message_media import cache_image, image_block_from_path, persist_image_block, source_urls_for_content
+from .message_media import cache_image, image_block_from_path, persist_image_block, source_urls_for_content, normalize_message_content, visual_blocks_from_path
 from .store import Store
 
 SKILLS = {
@@ -53,6 +53,7 @@ class DshRuntime:
         self.api_url = api_url
         self.harness: DeepSeekHarness | None = None
         self.live_sessions: set[str] = set()
+        self.activity: dict[str, dict[str, Any]] = {}
 
     def configure_model(self, *, model: str, base_url: str, api_key: str,
                         provider: str = "companion-model", context_length: int | None = None,
@@ -82,7 +83,7 @@ class DshRuntime:
         compaction_plugin = (self.root / "src/dsh_companion/compaction_plugin.mjs").as_posix()
         patch: list[dict[str, Any]] = [
             {"id": "system-prompt", "config": {
-                "personaPrefix": "你是与用户共同生活、行动和交流的人格系统。各角色共享同一人格和经历。"}},
+                "personaPrefix": ""}},
             {"id": "skill-filesystem", "config": {
                 "includeDefaultRoots": False, "customSkillDirs": [str(self.root / ".agents/skills")]}},
             # 自动压缩由控制台的绝对 Token 阈值统一调度；手动压缩仍使用 DSH 引擎。
@@ -259,6 +260,11 @@ class DshRuntime:
                 return
             event = notification.payload.get("event") or {}
             kind = event.get("type")
+            data = event.get("data") or {}
+            if kind == "tool/call":
+                self.activity[actor_id] = {"job_id": job_id, "tool": data["name"], "call_id": data["callId"]}
+            elif kind in ("tool/result", "turn/end"):
+                self.activity.pop(actor_id, None)
             if kind not in ("assistant/message", "assistant/attempt", "compaction/summary"):
                 return
             data = event.get("data") or {}
@@ -352,11 +358,15 @@ class DshRuntime:
         prompt = (f"请使用 skill 工具加载 {skill}，按该角色处理下面这项工作。"
                   "平台消息使用事件中当前的接收目标和发送者；平台外发请直接调用对应 companion 工具。"
                   "主会话对用户的回复直接作为最终回复。工作内容：\n" + json.dumps(data, ensure_ascii=False))
-        if job["kind"] == "autonomous_main" and self.store.get_config("platforms")["douyin"]["enabled"]:
-            prompt += ("\n本次自主唤醒如没有更紧急的工作，请实际调用 browse_douyin_recommended 刷抖音推荐；"
-                       "有感兴趣的作品可读取详情或调用 watch_video 查看实际画面和可用字幕。"
-                       "只有确有值得分享的内容，才向已确认的管理员会话或已确认的群分享工具返回的链接；"
-                       "先查重，尊重群聊规则，发送后记录结果。只看过标题或几帧时不要说看完视频。")
+        if actor_id == "main" and job["kind"] == "autonomous_main":
+            prompt += (
+                "\n这是一次自主决策机会，不是固定巡检。结合下面的当前状态，自己选择最值得推进的一件事："
+                "优先推进用户方向和未完成目标；也可研究、浏览、创作、交流或整理有价值的记忆。"
+                "能直接完成的小事自己做，需要并行或专长的工作委派对应角色并写清预期成果。"
+                "不必询问用户下一步做什么，不必等待新指令，也不强制刷推荐或例行汇报。"
+                "先看已有任务和日程，继续已有工作，不重复派单；结果值得保留时记下结论和下一步。"
+                "需要稍后跟进就安排一次性任务；没值得做的事可以结束本轮。\n当前决策上下文：\n"
+                + json.dumps(self.memory.decision_context(), ensure_ascii=False))
         turn_platform = event["platform"] if event else job["payload"].get("platform", "")
         messages = []
         if job["kind"] in ("group_interaction", "private_message_batch") and job["payload"].get("platform"):
@@ -365,7 +375,7 @@ class DshRuntime:
             messages.append(event)
         settings = self.store.get_config("platforms").get(turn_platform, {})
         chat_media = self.store.get_config("chat_media") or {}
-        media = [(index, item, item.get("payload", {}).get("content") or {})
+        media = [(index, item, normalize_message_content(item.get("payload", {})))
                  for index, item in enumerate(messages, 1)
                  if (item.get("payload", {}).get("content") or {}).get("kind") in ("image", "emoji")]
         read_media = chat_media.get("read_inbound_images", settings.get("read_message_images", False))
@@ -381,8 +391,8 @@ class DshRuntime:
                 for index, item, content in media:
                     label = f"第 {index} 条消息的{'表情' if content['kind'] == 'emoji' else '图片'}："
                     try:
-                        event_id = str(item.get("id") or "")
-                        saved = self.store.get_media_for_event(event_id, index) if event_id else None
+                        event_id = str(item.get("id") or f"job:{job['id']}")
+                        saved = self.store.get_media_for_event(event_id, index)
                         image = None
                         if saved and Path(saved["path"]).exists():
                             image = image_block_from_path(saved["path"])
@@ -392,7 +402,7 @@ class DshRuntime:
                             image = cache_image(content, Path(temporary), index=index)
                         if image and save_media and not saved:
                             persisted = persist_image_block(image, library_folder,
-                                                            stem=f"{turn_platform or 'message'}-{event_id or job['id']}-{index}")
+                                                            stem=f"{turn_platform or 'message'}-{job['id']}-{index}")
                             if persisted:
                                 saved = self.store.save_media(
                                     platform=turn_platform or item.get("platform", ""),
@@ -408,8 +418,9 @@ class DshRuntime:
                                 image = image_block_from_path(persisted["path"])
                         if image:
                             path_note = f" 已保存到：{saved['path']}" if saved else ""
-                            blocks.extend([{"type": "text", "text": label + path_note},
-                                           {key: image[key] for key in ("type", "mimeType", "data") if key in image}])
+                            blocks.append({"type": "text", "text": label + path_note})
+                            blocks.extend(visual_blocks_from_path(image["path"]) if image.get("path") else
+                                          [{key: image[key] for key in ("type", "mimeType", "data") if key in image}])
                         else:
                             blocks.append({"type": "text", "text": label + "平台未提供图片地址，画面不可见。"})
                     except Exception as exc:
