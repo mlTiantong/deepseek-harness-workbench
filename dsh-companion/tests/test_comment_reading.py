@@ -35,6 +35,16 @@ def dy_item(ident, likes=0, author="reader", **extra):
             "text": f"评论 {ident}", **extra}
 
 
+class PendingNetworkResponse:
+    def __init__(self, response): self.response=response
+    async def __aenter__(self): return self
+    async def __aexit__(self, *_args): pass
+    @property
+    def value(self):
+        async def response(): return self.response
+        return response()
+
+
 class CommentReadingTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -81,17 +91,32 @@ class CommentReadingTests(unittest.IsolatedAsyncioTestCase):
                   "cursor": start+20, "has_more": True} for start in (0, 20, 40)]
         pages[0]["comments"][0].update(author_pin=True)
         pages[0]["comments"][1] = dy_item(1, 1, "owner")
-        page = SimpleNamespace(evaluate=AsyncMock(side_effect=pages))
+        responses = [SimpleNamespace(ok=True, json=AsyncMock(return_value=data)) for data in pages]
+        def expect_response(matches, **_kwargs):
+            self.assertTrue(matches(SimpleNamespace(url=f'https://www.douyin.com/aweme/v1/web/comment/list/?aweme_id={aid}&cursor={pages[3-len(responses)]["cursor"]-20}')))
+            return PendingNetworkResponse(responses.pop(0))
+        page = SimpleNamespace(url="https://www.douyin.com/note/"+aid, expect_response=expect_response, evaluate=AsyncMock())
         browser = SimpleNamespace(lock=asyncio.Lock(), page=AsyncMock(return_value=page))
-        with patch.object(server.upstream, "_browser", browser), patch.object(server.upstream, "_goto", AsyncMock()):
+        with patch.object(server.upstream, "_browser", browser), patch.object(server.upstream, "_goto", AsyncMock()) as navigate:
             result = json.loads(await server.companion_read_comments(aid, 50, author_id="owner"))
+        navigate.assert_not_awaited()
         self.assertEqual(result["count"], 50)
         self.assertEqual([c["id"] for c in result["items"][:3]], ["0", "1", "59"])
         self.assertEqual(page.evaluate.await_args_list[2].args[1]["cursor"], 40)
+        self.assertIn('keepalive:true',page.evaluate.await_args.args[0])
+        self.assertNotIn('await fetch',page.evaluate.await_args.args[0])
         adapter = DouyinAdapter(self.store, ROOT, data_dir=self.root)
         adapter.web.call = AsyncMock(return_value=result)
         await adapter.get_content_comments(content_id=aid, limit=50, author_id="owner")
         adapter.web.call.assert_awaited_with("companion_read_comments", content_id=aid, limit=50, author_id="owner")
+
+    async def test_douyin_comment_http_error_is_not_an_empty_comment_section(self):
+        page=SimpleNamespace(url="about:blank",evaluate=AsyncMock(),expect_response=lambda *_a,**_kw:
+                             PendingNetworkResponse(SimpleNamespace(ok=False,status=403)))
+        browser=SimpleNamespace(lock=asyncio.Lock(),page=AsyncMock(return_value=page))
+        with patch.object(server.upstream,'_browser',browser),patch.object(server.upstream,'_goto',AsyncMock()):
+            with self.assertRaisesRegex(RuntimeError,'HTTP 403'):
+                await server.companion_read_comments('1234567890123456789',30)
 
     def media_service(self, platform="douyin", content_type="video"):
         config = self.store.get_config("platforms"); config[platform]["enabled"] = True

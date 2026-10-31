@@ -6,7 +6,7 @@ import base64
 import json
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -82,17 +82,31 @@ async def companion_read_comments(content_id: str, limit: int = 30, author_id: s
         raise ValueError("需要抖音作品 ID 或作品链接")
     async with upstream._browser.lock:
         page = await upstream._browser.page()
-        await upstream._goto(page, upstream.VIDEO_URL.format(aweme_id=aid), settle=2)
+        # Comment APIs only need a loaded Douyin origin. Do not navigate away
+        # from an image post: /video/id -> /note/id redirects tear down its JS.
+        if urlparse(page.url).hostname not in ("www.douyin.com", "douyin.com"):
+            await upstream._goto(page, upstream.HOME_URL, settle=2)
         items = []
         cursor = 0
         while True:
-            data = await page.evaluate("""async ({aid, cursor}) => {
-                const q = new URLSearchParams({device_platform:'webapp', aid:'6383',
-                    channel:'channel_pc_web', aweme_id:aid, cursor:String(cursor), count:'20', item_type:'0'});
-                const r = await fetch('/aweme/v1/web/comment/list/?' + q, {credentials:'include'});
-                if (!r.ok) throw new Error('评论 HTTP ' + r.status);
-                return await r.json();
-            }""", {"aid": aid, "cursor": cursor})
+            # Let the site sign fetch(), but read its network response outside
+            # the document. keepalive lets the request survive a detail-page navigation.
+            def matches(response):
+                parsed = urlparse(response.url)
+                query = parse_qs(parsed.query)
+                return (parsed.path == "/aweme/v1/web/comment/list/"
+                        and query.get("aweme_id") == [aid]
+                        and query.get("cursor") == [str(cursor)])
+            async with page.expect_response(matches, timeout=30000) as pending:
+                await page.evaluate("""({aid, cursor}) => {
+                    const q = new URLSearchParams({device_platform:'webapp', aid:'6383',
+                        channel:'channel_pc_web', aweme_id:aid, cursor:String(cursor), count:'20', item_type:'0'});
+                    fetch('/aweme/v1/web/comment/list/?' + q, {credentials:'include', keepalive:true});
+                }""", {"aid": aid, "cursor": cursor})
+            response = await pending.value
+            if not response.ok:
+                raise RuntimeError(f"抖音评论 HTTP {response.status}")
+            data = await response.json()
             if data.get("status_code", 0) != 0:
                 raise RuntimeError(f"抖音评论接口返回错误：{data.get('status_code')}")
             for item in data.get("comments") or []:
