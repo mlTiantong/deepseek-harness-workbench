@@ -113,4 +113,3 @@ with TemporaryDirectory(prefix='mini-whale-qa-') as folder, \
             pump_until(lambda:not pet.is_polling)
             backdrop.destroy();pet._quit()
             server.should_exit=True;thread.join(timeout=5)
-

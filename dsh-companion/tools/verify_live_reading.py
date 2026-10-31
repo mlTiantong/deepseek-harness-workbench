@@ -63,7 +63,7 @@ def inspect_media(configs,events,folder):
         print(tag,results[tag],flush=True)
     # Execute the real message->prompt->save pipeline, but intercept the outgoing model call.
     store=Store(folder/'test.sqlite3')
-    store.set_config('chat_media',configs['chat_media'])
+    store.set_config('chat_media',{**configs['chat_media'],'folder':str(folder/'library')})
     runtime=DshRuntime(store,ROOT,data_dir=folder/'runtime')
     pipeline={}
     for tag,block in visual:
@@ -170,6 +170,7 @@ async def comments(configs,events,folder):
 
 
 def main():
+    REPORT.parent.mkdir(parents=True,exist_ok=True)
     configs,events=source_data();report={}
     with tempfile.TemporaryDirectory(prefix='reading-live-') as folder:
         path=Path(folder)
@@ -186,4 +187,3 @@ def main():
         raise SystemExit(1)
 
 if __name__=='__main__':main()
-
