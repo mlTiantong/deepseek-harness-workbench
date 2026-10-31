@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { createClient, segment } from 'douyin-im'
 import { messageData, historyEvent } from './douyin_messages.mjs'
 import { directShareMessage, splitDouyinLinks } from './douyin_share.mjs'
+import { resolveContact } from './douyin_contacts.mjs'
 
 const directory = process.argv[2]
 await mkdir(directory, { recursive: true })
@@ -122,9 +123,7 @@ async function handle({ id, method, params = {} }) {
       }
     } else if (method === 'send_message') {
       const account = client.pickAccount(params.account_id || undefined)
-      const contact = contacts.get(params.conversation_id) ?? account.pickFriend(params.recipient_id)
-        ?? account.pickStranger(params.recipient_id)
-        ?? [...account.fl.values(), ...account.sl.values()].find(item => item.threadId === params.conversation_id)
+      const contact = await resolveContact(account, contacts, params)
       if (!contact) throw new Error('没有找到该抖音私信会话或联系人')
       const imagePaths = Array.isArray(params.image_paths)
         ? params.image_paths

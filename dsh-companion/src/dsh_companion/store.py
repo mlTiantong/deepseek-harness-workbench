@@ -57,7 +57,7 @@ DEFAULT_CONFIG = {
     "dsh": {"provider": "deepseek-official", "model": "deepseek-v4-flash",
             "profile": "sdk", "base_url": "", "reasoning_effort": "low", "max_tokens": 8192,
             "context_length": 200000, "api_format": "openai-completions", "compatibility": "deepseek"},
-    "media": {"enabled": False, "frame_provider": ""},
+    "media": {"enabled": False, "audio_enabled": True, "daily_limit": 20, "asr_model": "base"},
     "image_generation": {"url": "", "model": ""},
     "session_compaction": {actor_id: {"enabled": False, "threshold_tokens": 100000} for actor_id in ACTORS},
     "pricing": DEFAULT_PRICING,
@@ -283,6 +283,10 @@ class Store:
             db.execute("""INSERT INTO config(key,value,updated_at) VALUES('chat_media',?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at""",
                        (_json(chat_media), now))
+            video_media = json.loads(db.execute("SELECT value FROM config WHERE key='media'").fetchone()[0])
+            for field, value in DEFAULT_CONFIG["media"].items():
+                video_media.setdefault(field, value)
+            db.execute("UPDATE config SET value=? WHERE key='media'", (_json(video_media),))
             dsh = json.loads(db.execute("SELECT value FROM config WHERE key='dsh'").fetchone()[0])
             for field in ("context_length", "api_format", "compatibility"):
                 dsh.setdefault(field, DEFAULT_CONFIG["dsh"][field])

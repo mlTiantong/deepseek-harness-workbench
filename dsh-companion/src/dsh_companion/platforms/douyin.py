@@ -107,5 +107,9 @@ class DouyinAdapter:
             raise ValueError("抖音插件当前按数量读取评论，不提供翻页游标")
         return await self.web.call("douyin_comments", aweme_id=content_id, num=limit)
 
-    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float]) -> dict[str, Any]:
-        return await self.web.fetch_media_frames(content_id=content_id, timestamps=timestamps)
+    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8, include_audio: bool = False,
+                                 asr_model: str = "base") -> dict[str, Any]:
+        return await self.web.fetch_media_frames(content_id=content_id, timestamps=timestamps,
+                                                 frame_count=frame_count, include_audio=include_audio,
+                                                 asr_model=asr_model)

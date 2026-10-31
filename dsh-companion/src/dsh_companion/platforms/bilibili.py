@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import tempfile
 import time
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -18,6 +20,7 @@ from bilibili_api.utils.network import Api, Credential
 from bilibili_api.utils.picture import Picture
 
 from ..store import Store
+from ..video_media import create_cover, extract_frame, sample_times, transcribe_audio
 
 
 class BilibiliAdapter:
@@ -295,12 +298,21 @@ class BilibiliAdapter:
                 draft.add_image([Picture.from_file(path) for path in files])
             return await dynamic.send_dynamic(draft, credential)
         if content_type == "video":
-            meta = video_uploader.VideoMeta(tid=int(metadata["tid"]), title=title, desc=content,
-                                             cover=metadata.get("cover", ""), tags=tags,
-                                             original=metadata["original"])
-            pages = [video_uploader.VideoUploaderPage(path, title) for path in files]
-            upload = video_uploader.VideoUploader(pages, meta, credential, cover=metadata.get("cover", ""))
-            return await upload.start()
+            if not files:
+                raise ValueError("B 站视频投稿需要至少一个视频文件")
+            # VideoMeta 要求本地封面；调用方未提供时从第一个视频生成。
+            with tempfile.TemporaryDirectory(prefix="companion-bili-cover-") as temp:
+                cover = metadata.get("cover") or str(Path(temp) / "cover.jpg")
+                if not metadata.get("cover"):
+                    await asyncio.to_thread(create_cover, files[0], cover)
+                meta = video_uploader.VideoMeta(tid=int(metadata.get("tid", 230)), title=title, desc=content,
+                                                 cover=cover, tags=tags or ["原创"],
+                                                 original=metadata.get("original", True),
+                                                 source=metadata.get("source"))
+                pages = [video_uploader.VideoUploaderPage(path, Path(path).stem if len(files) > 1 else title)
+                         for path in files]
+                upload = video_uploader.VideoUploader(pages, meta, credential)
+                return await upload.start()
         raise ValueError(f"B 站不支持的内容类型：{content_type}")
 
     async def browse_trending(self, *, limit: int = 10, trend_id: str = "", keyword: str = "") -> dict[str, Any]:
@@ -329,5 +341,52 @@ class BilibiliAdapter:
         return await comment.get_comments_lazy(oid, comment.CommentResourceType(resource_type),
                                                offset=cursor, credential=credential)
 
-    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float]) -> dict[str, Any]:
-        raise NotImplementedError("视频帧接口已预留，当前尚未接入")
+    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8, include_audio: bool = False,
+                                 asr_model: str = "base") -> dict[str, Any]:
+        match = re.search(r"(BV[0-9A-Za-z]+|av\d+)", content_id, re.IGNORECASE)
+        ident = match.group(1) if match else content_id
+        credential = self._credential() if self.credentials_file.exists() else None
+        target = (video.Video(bvid=ident, credential=credential) if ident.upper().startswith("BV")
+                  else video.Video(aid=int(ident.lower().removeprefix("av")), credential=credential))
+        info = await target.get_info()
+        page = info["pages"][0]
+        duration = float(page["duration"])
+        times = timestamps if timestamps is not None else sample_times(duration, frame_count)
+        if not times or len(times) > 16 or any(t < 0 or t >= duration for t in times):
+            raise ValueError("请选择视频时长内的 1 至 16 个时间点")
+        download = await target.get_download_url(cid=page["cid"])
+        streams = download.get("dash", {}).get("video", [])
+        if streams:
+            stream = min(streams, key=lambda s: (abs(s.get("height", 0) - 480), s.get("codecid") != 7))
+            source = stream.get("baseUrl") or stream["base_url"]
+        else:
+            source = download["durl"][0]["url"]
+        headers = {"Referer": f"https://www.bilibili.com/video/{info['bvid']}/", "User-Agent": "Mozilla/5.0"}
+        frames = await asyncio.gather(*(asyncio.to_thread(extract_frame, source, float(t), headers=headers)
+                                        for t in times))
+        subtitle_text = ""
+        try:
+            subtitles = ((await target.get_subtitle(cid=page["cid"])).get("subtitles", [])
+                         if credential and credential.sessdata else [])
+            if subtitles:
+                url = subtitles[0]["subtitle_url"]
+                async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
+                    response = await client.get("https:" + url if url.startswith("//") else url)
+                    response.raise_for_status()
+                subtitle_text = "\n".join(f"{line['from']:.1f}s {line['content']}"
+                                          for line in response.json().get("body", []))
+        except (KeyError, httpx.HTTPError, ResponseCodeException):
+            pass  # 许多作品没有可读取的字幕；画面仍然可以观看。
+        audio = {"audio_status": "disabled", "transcript": "", "audio_understood": False}
+        if include_audio:
+            audio_streams = download.get("dash", {}).get("audio") or []
+            audio_url = ((audio_streams[0].get("baseUrl") or audio_streams[0].get("base_url"))
+                         if audio_streams else (download["durl"][0]["url"] if download.get("durl") else None))
+            if audio_url:
+                audio = await asyncio.to_thread(transcribe_audio, audio_url, headers=headers, model_name=asr_model)
+            else:
+                audio["audio_status"] = "no_audio"
+        return {"platform": "bilibili", "content_id": info["bvid"], "title": info["title"],
+                "description": info.get("desc", ""), "duration": duration, "frames": frames,
+                "subtitles": subtitle_text, **audio}

@@ -354,7 +354,7 @@ class DshRuntime:
                   "主会话对用户的回复直接作为最终回复。工作内容：\n" + json.dumps(data, ensure_ascii=False))
         if job["kind"] == "autonomous_main" and self.store.get_config("platforms")["douyin"]["enabled"]:
             prompt += ("\n本次自主唤醒如没有更紧急的工作，请实际调用 browse_douyin_recommended 刷抖音推荐；"
-                       "有感兴趣的作品可读取详情或调用 inspect_douyin_video 查看实际画面。"
+                       "有感兴趣的作品可读取详情或调用 watch_video 查看实际画面和可用字幕。"
                        "只有确有值得分享的内容，才向已确认的管理员会话或已确认的群分享工具返回的链接；"
                        "先查重，尊重群聊规则，发送后记录结果。只看过标题或几帧时不要说看完视频。")
         turn_platform = event["platform"] if event else job["payload"].get("platform", "")

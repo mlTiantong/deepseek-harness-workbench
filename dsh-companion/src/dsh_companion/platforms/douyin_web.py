@@ -1,6 +1,7 @@
 """抖音网页插件：独立浏览器配置、评论和作品发布。"""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import socket
@@ -15,6 +16,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from ..store import Store
+from ..video_media import extract_frame, probe_duration, sample_times, transcribe_audio
 
 
 class DouyinWeb:
@@ -188,5 +190,36 @@ class DouyinWeb:
     async def my_posts(self, *, limit: int = 20, cursor: str = "0") -> dict[str, Any]:
         return await self.call("companion_my_posts", limit=limit, cursor=cursor)
 
-    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float]) -> dict[str, Any]:
-        raise NotImplementedError("视频帧接口已预留，当前尚未接入")
+    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8, include_audio: bool = False,
+                                 asr_model: str = "base") -> dict[str, Any]:
+        downloaded_path = None
+        try:
+            try:
+                result = await self.call("companion_video_frames", content_id=content_id,
+                                         timestamps=timestamps, frame_count=frame_count)
+            except RuntimeError as exc:
+                if "视频定位超时" not in str(exc):
+                    raise
+                downloaded = await self.call("companion_download_video", content_id=content_id)
+                downloaded_path = Path(downloaded["path"])
+                duration = await asyncio.to_thread(probe_duration, str(downloaded_path))
+                times = timestamps if timestamps is not None else sample_times(duration, frame_count)
+                if not times or len(times) > 16 or any(t < 0 or t >= duration for t in times):
+                    raise ValueError("请选择视频时长内的 1 至 16 个时间点")
+                frames = [await asyncio.to_thread(extract_frame, str(downloaded_path), t) for t in times]
+                result = {"content_id": content_id, "duration": duration, "frames": frames,
+                          "platform": "douyin", "frame_source": "download"}
+            result.update({"audio_status": "disabled", "transcript": "", "audio_understood": False})
+            if include_audio and result.get("content_type") != "image":
+                try:
+                    if downloaded_path is None:
+                        downloaded = await self.call("companion_download_video", content_id=content_id)
+                        downloaded_path = Path(downloaded["path"])
+                    result.update(await asyncio.to_thread(transcribe_audio, str(downloaded_path), model_name=asr_model))
+                except Exception as exc:
+                    result.update({"audio_status": "error", "audio_error": str(exc)})
+            return result
+        finally:
+            if downloaded_path is not None:
+                downloaded_path.unlink(missing_ok=True)

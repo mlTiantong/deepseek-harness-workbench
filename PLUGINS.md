@@ -16,6 +16,6 @@
 
 ## 运行时依赖
 
-`dsh-companion` 还依赖 `deepseek-harness-sdk`、`@deepseek-ai/dsh`、`bilibili-api-python`、`douyin-im`、Playwright、FastAPI 和 MCP SDK。完整版本约束见 [`dsh-companion/pyproject.toml`](dsh-companion/pyproject.toml) 与 [`dsh-companion/runtime/package.json`](dsh-companion/runtime/package.json)。
+`dsh-companion` 还依赖 `deepseek-harness-sdk`、`@deepseek-ai/dsh`、`bilibili-api-python`、`douyin-im`、Playwright、FastAPI、MCP SDK、imageio-ffmpeg 和 faster-whisper。完整版本约束见 [`dsh-companion/pyproject.toml`](dsh-companion/pyproject.toml) 与 [`dsh-companion/runtime/package.json`](dsh-companion/runtime/package.json)。
 
 插件能否执行取决于平台登录状态、账号权限、网页版本、地区和第三方服务可用性。请先在测试账号和单条内容上人工核对，不要把自动化执行结果当作平台官方确认。

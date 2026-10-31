@@ -204,6 +204,10 @@ def create_app(root: str | Path, *, data_dir: str | Path | None = None,
     app = FastAPI(title="DSH Companion", lifespan=lifespan)
     app.state.companion = companion
 
+    @app.exception_handler(ValueError)
+    async def invalid_request(_request, exc: ValueError):
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
     @app.exception_handler(Exception)
     async def failure(_request, exc: Exception):
         log.exception("接口执行失败", exc_info=exc)
@@ -430,6 +434,10 @@ def create_app(root: str | Path, *, data_dir: str | Path | None = None,
     async def delete_memory(memory_id: str):
         return {"ok": companion.store.delete_memory(memory_id)}
 
+    @app.get("/api/video-reading/quota")
+    async def video_quota():
+        return companion.platforms.video_quota()
+
     @app.get("/api/platforms/{platform}/quota")
     async def quota(platform: str):
         return companion.platforms.publishing_quota(platform)
@@ -478,7 +486,9 @@ def create_app(root: str | Path, *, data_dir: str | Path | None = None,
             return await companion.platforms.list_joined_groups(platform)
         if operation == "get_group_history":
             return await companion.platforms.get_group_history(platform, body)
-        if operation in ("browse_trending", "browse_recommended", "list_my_posts", "inspect_video", "search_content", "get_content", "get_content_comments"):
+        if operation == "inspect_video":
+            return await companion.platforms.fetch_media_frames(platform, **body, include_audio=False)
+        if operation in ("browse_trending", "browse_recommended", "list_my_posts", "search_content", "get_content", "get_content_comments"):
             return await companion.platforms.browse(platform, operation, body)
         if operation == "fetch_media_frames":
             return await companion.platforms.fetch_media_frames(platform, **body)

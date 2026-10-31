@@ -20,6 +20,7 @@ class PlatformService:
         self.store = store
         self.scheduler = scheduler
         self.group_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+        self.media_lock = asyncio.Lock()
         base = Path(data_dir).resolve() / "platforms" if data_dir else Path(root).resolve() / "var/platforms"
         self.adapters = {"bilibili": BilibiliAdapter(store, root, directory=base / "bilibili"),
                          "douyin": DouyinAdapter(store, root, scheduler=scheduler, data_dir=data_dir),
@@ -126,5 +127,37 @@ class PlatformService:
         self.store.finish_action(action["id"], result=result)
         return {"action_id": action["id"], "result": result}
 
-    async def fetch_media_frames(self, platform: str, *, content_id: str, timestamps: list[float]) -> dict[str, Any]:
-        return await self.adapters[platform].fetch_media_frames(content_id=content_id, timestamps=timestamps)
+    def video_quota(self) -> dict[str, Any]:
+        config = self.store.get_config("media")
+        start = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        used = sum(self.store.count_actions(platform, "watch_video", start) for platform in ("bilibili", "douyin"))
+        limit = int(config["daily_limit"])
+        return {"enabled": config["enabled"], "audio_enabled": config["audio_enabled"], "used": used,
+                "limit": limit, "remaining": max(0, limit - used) if limit else None}
+
+    async def fetch_media_frames(self, platform: str, *, content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8, include_audio: bool | None = None) -> dict[str, Any]:
+        async with self.media_lock:
+            config = self.store.get_config("media")
+            if not config["enabled"]:
+                raise ValueError("控制台尚未开启视频阅读")
+            if not self.store.get_config("platforms")[platform]["enabled"]:
+                raise ValueError(f"{platform} 尚未在控制台启用")
+            quota = self.video_quota()
+            if quota["limit"] and quota["used"] >= quota["limit"]:
+                raise ValueError("今日视频阅读额度已用完")
+            audio = config["audio_enabled"] and include_audio is not False
+            action = self.store.create_action(platform, "watch_video", {"content_id": content_id,
+                                              "frame_count": frame_count, "include_audio": audio})
+            try:
+                result = await self.adapters[platform].fetch_media_frames(
+                    content_id=content_id, timestamps=timestamps, frame_count=frame_count,
+                    include_audio=audio, asr_model=config["asr_model"])
+            except Exception as exc:
+                self.store.finish_action(action["id"], error=f"{type(exc).__name__}: {exc}")
+                raise
+            self.store.finish_action(action["id"], result={"content_id": result["content_id"],
+                "duration": result["duration"], "frame_count": len(result["frames"]),
+                "audio_status": result["audio_status"]})
+            result["quota"] = self.video_quota()
+            return result

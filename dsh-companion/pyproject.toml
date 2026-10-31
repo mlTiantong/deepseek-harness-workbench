@@ -16,6 +16,8 @@ dependencies = [
   "PyYAML>=6.0",
   "python-multipart>=0.0.20",
   "tzdata>=2025.1",
+  "imageio-ffmpeg==0.6.0",
+  "faster-whisper==1.2.1",
 ]
 
 [project.scripts]

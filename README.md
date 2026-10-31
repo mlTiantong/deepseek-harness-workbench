@@ -1,52 +1,108 @@
-# DeepSeek Harness Workbench
+# 大肥鱼 · DeepSeek Harness Workbench
 
-Windows 本地创作与自动化工作台，包含两个部分：
+一个运行在 Windows 本机的 AI 陪伴与创作工作台。大肥鱼不只在聊天框里回答问题：它可以在用户配置的平台上聊天、查看作品、记住共同经历、安排后续任务，在条件允许时主动分享内容或提醒主人。
 
-- `dsh-companion/`：本地调度、长期记忆、任务队列、额度记录和 Web 工作台。
-- `creator/`：创作者 MCP 工具、平台登录核验、浏览器桥接和控制台。
+项目由 **DSH Companion（大肥鱼工作台）** 和可选的 **Creator 创作者工作台**组成。模型推理由配置的模型服务完成；本地服务、浏览器、登录状态、记忆和调度数据由使用者自己管理。
 
-## 安装
+> **使用前请注意：**这是需要持续运行的本地应用，不是托管云服务。平台登录、模型可用性和网络都会影响结果；涉及私信、群消息、评论和发布等真实外发操作，请先配置账号、管理员和额度，使用测试账号验证。第三方平台页面和接口变化可能导致功能失效。
 
-环境：Windows 10/11、Python 3.11+、Node.js 22+、Google Chrome。
+## 大肥鱼能做什么
+
+### 看作品、听内容、读图文
+
+- **真正读取视频画面**：给它 B 站 BV 号、抖音作品 ID 或链接，可按时间采样视频画面，结合画面、作品信息和可用字幕总结；也可以指定时间点查看。需要支持图片输入的模型。
+- **本地语音转写**：启用后用 FFmpeg 提取音轨，在本机通过 Whisper 和 VAD 转写；B 站有字幕时也会读取可用字幕。语音模型首次使用时需要下载，默认 CPU 运行。
+- **抖音图文**：识别图文作品，按顺序读取图片和文字，而不是把图文误判成视频；当前最多读取前 16 张，图文背景音乐不转写。
+- **浏览与分享**：可以查找热点、搜索作品、读取详情与评论；按配置自主浏览抖音推荐，将值得分享的真实作品链接和感想发到已确认的会话或群聊。
+
+这里的“看视频”是**按时间抽样，不是逐帧观看完整视频**；转写可能有误，也不保证完全过滤音乐。未取得音频或画面时不能把它当成已经听过或看过。抖音音轨下载上限为 256 MiB；音频处理失败时会保留已获取的画面并显示错误。
+
+### 提醒主人与安排后续任务
+
+- 在对话中让大肥鱼**稍后提醒你、跟进一件事或安排后续工作**；它可以创建一次性或固定间隔的定时任务，唤醒相应角色执行。也可以在工作台「心事任务单」的「小闹钟与日程」中查看和管理。
+- 提醒需要明确内容和接收渠道：如通过已登录、已启用的平台向已确认的主人会话发消息；**不是系统级闹钟、短信服务或保证送达的推送**。到时应用必须运行、模型与网络可用，且账号、消息权限和相应配置正常；建议在重要事项上先做一次测试，不要将其作为唯一提醒。
+- 支持任务排队、角色分工、查看执行结果和错误；管理员在已配置的平台上可请求把消息转告主会话。任务和定时规则持久化在本地。
+
+### 陪伴、记忆与互动
+
+- **统一人格与长期记忆**：编辑核心人格、近期背景、共同经历、熟人印象和随手记录；支持检索、整理与背景广播，让不同会话共享信息。
+- **多角色协作**：主会话、平台私信/群聊/评论、媒体、创作与发布角色各自处理任务，共享背景和记忆；可配置自主唤醒、记忆整理和会话压缩。
+- **跨平台互动**：按配置接收和回复 B 站、抖音和微信消息；B 站、抖音支持群聊流程，抖音支持作品分享卡和图片消息。具体能力取决于平台、依赖和登录状态。
+- **消息图片与媒体库**：可读取和保存收到的图片、表情，并在可用的平台上发送图片；是否读取、保存及发送额度可配置。
+
+### 创作与工作台
+
+- **创作目录**：浏览、读取并扫描本地素材；新增或更新的文件可进入创作角色的任务队列。
+- **图片生成**：配置兼容的图像生成接口，生成图片并返回本地文件路径，供后续查看、发送或创作使用。
+- **作品发布**：提供 B 站视频和抖音视频/图文发布流程、每日发布额度及动作记录；B 站可生成视频封面。提交成功不等于已通过审核或对外可见。
+- **Web 控制台**：集中管理模型、平台登录、管理员、角色、记忆、定时任务、创作目录、视频/语音开关、额度和运行记录；可查看模型用量与估算费用。
+
+| 平台 | 已实现的主要能力 | 注意事项 |
+| --- | --- | --- |
+| B 站 | 私信、群聊、评论、搜索/浏览、视频抽帧与可用字幕、本地语音转写、视频投稿 | 需登录及对应权限；默认读取视频第一个分 P |
+| 抖音 | 私信、群聊、评论、推荐/搜索、视频抽帧与本地语音转写、图文阅读、视频/图文发布 | 私信和网页创作通道分别登录；受页面与接口变化影响 |
+| 微信 | 私信与图片收发等桥接能力 | 需另行安装兼容的 `dsh-wechat`；可用能力取决于该插件与账号 |
+| 小红书 | Companion 中保留平台接口 | 尚非完整可用适配器；Creator/外部插件能力另见插件清单 |
+
+## 安装与启动
+
+**环境：**Windows 10/11、Python 3.11+、Node.js 22+、Google Chrome，以及一个可用的 OpenAI-compatible 模型接口。视频画面理解需要视觉模型。
+
+在 PowerShell 中执行：
 
 ```powershell
-git clone https://github.com/mlTiantong/deepseek-harness-workbench.git
+git clone --recurse-submodules https://github.com/mlTiantong/deepseek-harness-workbench.git
 cd deepseek-harness-workbench
 
+# 如果克隆时没有带 --recurse-submodules，先执行：
+# git submodule update --init --recursive
 py -3.11 -m venv dsh-companion\.venv
 .\dsh-companion\.venv\Scripts\python.exe -m pip install -e .\dsh-companion
+npm ci --prefix .\dsh-companion\runtime --no-audit --no-fund
+
+# 双击或运行该脚本，后台启动本地工作台
+.\启动大肥鱼.cmd
+```
+
+打开 **http://127.0.0.1:8765/**，在设置中填写模型 Base URL、模型名称和 API Key，然后在「平台」中按需启用功能并扫码登录。脚本会检测已有服务与端口占用；日志在 `dsh-companion/var/`。也可前台运行：
+
+```powershell
 cd dsh-companion
-npm ci --prefix .\runtime --no-audit --no-fund
 .\.venv\Scripts\dsh-companion.exe run
 ```
 
-启动后打开 `http://127.0.0.1:8765/`，在工作台中填写模型地址、模型名称和 API Key。
-
-创作者工作台需要先安装 DeepSeek Harness 桌面版，然后在仓库根目录执行：
+如需微信桥接，还需安装插件（不包含在上面的 `npm ci` 中）：
 
 ```powershell
-py -3.11 -m venv creator\.venv
-.\creator\.venv\Scripts\python.exe -m pip install -r creator\requirements.lock.txt
-Copy-Item creator\SOUL.md.example creator\SOUL.md
-Copy-Item creator\POLICY.md.example creator\POLICY.md
-Copy-Item creator\INTERESTS.md.example creator\INTERESTS.md
-Copy-Item creator\OWNER_CONTACT.json.example creator\OWNER_CONTACT.json
-Copy-Item creator\config.example.json creator\config.json
-.\知游工作台.cmd
+npm install --prefix .\dsh-companion\runtime --no-save dsh-wechat@0.13.3
 ```
 
-## 实际使用的插件
+或使用桌面 DSH profile 中已安装的兼容 `dsh-wechat`。安装后重启 Companion，再在平台页登录。依赖安装、模型导入和视频设置详见 [Companion 说明](dsh-companion/README.md)。
 
-| 插件 | 版本 | 功能 |
-| --- | --- | --- |
-| `dsh-bili-scroll` | 2.2.1 | B 站搜索、字幕、画面分析、日报和互动 |
-| `dsh-remotion` | 0.7.0 | 横屏/竖屏视频、动画、模板和 MP4 导出 |
-| `dsh-wechat` | 0.13.3 | 微信聊天、文件、图片、语音和会话控制 |
-| `dsh-wechat-mp` | 0.3.0 | 公众号 Markdown 排版、图片上传和草稿箱 |
-| `dsh-xiaohongshu-viral-note` | 0.1.0 | 小红书选题、文案、账号分析、登录和受控发布 |
-| `dsh-web-tools` | Git 版本 | 网页搜索和小红书笔记阅读 |
-| `dsh-soul-md` | 0.10.3 | 人设卡和分层记忆 |
-| `dsh-douyin-life` | 0.2.1 | 抖音工作流扩展 |
-| `dsh_douyin_tools` | Git 子模块 | 抖音网页 MCP 和相关工具 |
+### 试一试
 
-插件来源和链接见 [`PLUGINS.md`](PLUGINS.md)。
+1. 在「平台 → 视频阅读与语音」开启阅读，按需启用本地语音，并设置观看额度。
+2. 在主会话中发送：`帮我看看这个视频讲了什么：[B 站或抖音链接]`，或 `看看这篇抖音图文：[链接]`。
+3. 先登录并确认目标会话，再尝试：`30 分钟后通过我已确认的私信会话提醒我休息`；到「心事任务单」查看任务及结果。
+
+发布、评论、私信和群消息都是真实对外操作。确认对象、内容、账号与权限后再启用；结果不明确时先检查记录，避免盲目重发。
+
+## Creator 创作者工作台（可选）
+
+`creator/` 提供独立的创作者 MCP 工具、平台登录核验、浏览器桥接和控制台，需要已安装 DeepSeek Harness 桌面版。安装与配置见 [Creator 说明](creator/README.md)。它与 Companion 的平台适配器并非完全相同，外部插件功能也不等于 Companion 已全部实现。
+
+## 隐私与数据
+
+- 本地 SQLite、账号登录状态、Cookie、模型密钥、消息、日志和生成素材保存在本机运行目录，不应上传仓库；`dsh-companion/var/` 等目录已在 `.gitignore` 中排除。
+- 本地语音转写不需要上传音频给转写服务；**采样画面、转写文本、用户消息及其他上下文可能发送给你配置的模型服务**。平台互动会向对应平台发送必要数据，请自行确认服务提供方的数据政策。
+- 平台自动化可能受到权限、风控、登录过期和服务条款的限制。实际发布或消息是否送达、公开可见，需以平台结果为准。
+
+## 开发与测试
+
+```powershell
+cd dsh-companion
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+node tests/test_douyin_contacts.mjs
+```
+
+部分测试依赖浏览器、模型或额外运行环境。涉及真实平台的测试应使用测试账号，不应意外发送或发布。依赖与来源参见 [插件清单](PLUGINS.md)、[第三方说明](THIRD_PARTY_NOTICES.md) 和 [许可证](LICENSE)。

@@ -560,6 +560,22 @@
 
           <div class="stack">
             <article class="card">
+              <div class="card-heading compact"><h2>视频阅读与语音</h2></div>
+              <form id="video-reading-form">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" name="enabled"> <span>开启视频阅读</span></label>
+                  <label><input type="checkbox" name="audio_enabled"> <span>本地转写视频语音</span></label>
+                </div>
+                <div class="form-row">
+                  <label>每日观看次数（0 表示不限）<input type="number" min="0" name="daily_limit" required></label>
+                  <label>语音模型<select name="asr_model"><option value="base">base（轻量）</option><option value="small">small（更准确）</option><option value="tiny">tiny（最快）</option></select></label>
+                </div>
+                <p id="video-reading-usage">今日观看：—</p>
+                <p>语音在本机转写，首次使用需下载模型；非语音会尽量过滤。</p>
+                <button class="button primary" type="submit">保存视频阅读设置</button>
+              </form>
+            </article>
+            <article class="card">
               <div class="card-heading compact">
                 <h2>发作品零花钱（每日限额）</h2>
               </div>
@@ -871,6 +887,6 @@
     <div id="palette-list" class="palette-list"></div>
   </dialog>
 
-  <script src="/assets/app.js?v=20261030_whale6" defer></script>
+  <script src="/assets/app.js?v=20261031_video" defer></script>
 </body>
 </html>

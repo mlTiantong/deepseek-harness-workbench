@@ -1,6 +1,7 @@
 """本地 MCP 工具：DSH 会话通过它访问共享记忆、任务和平台动作。"""
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -29,7 +30,8 @@ async def _api(path: str, body: dict[str, Any] | None = None, *,
                method: str = "POST", timeout: float = 120) -> Any:
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         response = await client.request(method, path, json=body if method != "GET" else None)
-        response.raise_for_status()
+        if response.is_error:
+            raise RuntimeError(f"工作台接口 {response.status_code}: {response.text}")
         return response.json()
 
 
@@ -393,7 +395,7 @@ async def list_my_douyin_posts(limit: int = 20, cursor: str = "0") -> Any:
 
 @mcp.tool(annotations=READ_EXTERNAL, structured_output=False)
 async def inspect_douyin_video(content_id: str, timestamps: list[float]) -> Any:
-    """查看抖音视频的 1 至 3 帧实际画面；没有音频或转写，不能称已看完整视频。"""
+    """查看抖音视频指定时间点的画面（1 至 16 帧）；此工具不转写音频。"""
     result = await _api("/api/platforms/douyin/inspect_video",
                         {"content_id": content_id, "timestamps": timestamps}, timeout=180)
     output = [TextContent(type="text", text=f"作品 {content_id} 的画面；未获取音频。")]
@@ -432,11 +434,38 @@ async def get_content_comments(platform: str, content_id: str, resource_type: in
                       {"content_id": content_id, "resource_type": resource_type, "cursor": cursor, "limit": limit})
 
 
-@mcp.tool(annotations=READ)
-async def fetch_media_frames(platform: str, content_id: str, timestamps: list[float]) -> Any:
-    """请求媒体帧接口；当前默认未接入实际抽帧实现。"""
-    return await _api(f"/api/platforms/{platform}/fetch_media_frames",
-                      {"content_id": content_id, "timestamps": timestamps})
+def _video_content(result: dict[str, Any]) -> list[Any]:
+    metadata = {key: value for key, value in result.items() if key not in ("frames", "ok")}
+    if result.get("content_type") == "image":
+        output = [TextContent(type="text", text="以下是抖音图文作品的图片和元数据。\n" + json.dumps(metadata, ensure_ascii=False))]
+        for index, frame in enumerate(result["frames"], 1):
+            output.extend([TextContent(type="text", text=f"第 {index} 张图片"),
+                           ImageContent(type="image", mimeType=frame["mime_type"], data=frame["data"])])
+        return output
+    output = [TextContent(type="text", text="以下是按时间采样的画面、可用字幕及本地语音转写；不是逐帧观看。"
+                          "仅依据实际材料总结，转写可能有误；音频关闭或无语音时不要编造声音内容。\n"
+                          + json.dumps(metadata, ensure_ascii=False))]
+    for frame in result["frames"]:
+        output.extend([TextContent(type="text", text=f"画面时间：{frame['time']:.1f} 秒"),
+                       ImageContent(type="image", mimeType=frame["mime_type"], data=frame["data"])])
+    return output
+
+
+@mcp.tool(annotations=READ_EXTERNAL, structured_output=False)
+async def fetch_media_frames(platform: str, content_id: str, timestamps: list[float] | None = None,
+                             frame_count: int = 8, include_audio: bool | None = None) -> Any:
+    """查看 B 站或抖音视频抽帧，或读取抖音图文图片；视频可按设置在本地转写语音。"""
+    result = await _api(f"/api/platforms/{platform}/fetch_media_frames",
+                        {"content_id": content_id, "timestamps": timestamps, "frame_count": frame_count,
+                         "include_audio": include_audio}, timeout=1800)
+    return _video_content(result)
+
+
+@mcp.tool(annotations=READ_EXTERNAL, structured_output=False)
+async def watch_video(platform: str, content_id: str, frame_count: int = 8,
+                      include_audio: bool | None = None) -> Any:
+    """观看 B 站/抖音视频采样画面，或读取抖音图文图片；视频可按设置在本地转写语音。"""
+    return await fetch_media_frames(platform, content_id, frame_count=frame_count, include_audio=include_audio)
 
 
 @mcp.tool(annotations=EXTERNAL)

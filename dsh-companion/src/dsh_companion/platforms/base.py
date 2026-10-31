@@ -20,7 +20,9 @@ class PlatformAdapter(Protocol):
     async def get_content(self, *, content_id: str, resource_type: int = 1) -> dict[str, Any]: ...
     async def get_content_comments(self, *, content_id: str, resource_type: int = 1,
                                    cursor: str = "", limit: int = 20) -> dict[str, Any]: ...
-    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float]) -> dict[str, Any]: ...
+    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8, include_audio: bool = False,
+                                 asr_model: str = "base") -> dict[str, Any]: ...
 
 
 class ReservedPlatform:
@@ -62,5 +64,7 @@ class ReservedPlatform:
                                    cursor: str = "", limit: int = 20) -> dict[str, Any]:
         raise NotImplementedError(f"{self.name} 内容评论接口尚未接入")
 
-    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float]) -> dict[str, Any]:
-        raise NotImplementedError("视频帧接口已预留，当前尚未接入")
+    async def fetch_media_frames(self, *, content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8, include_audio: bool = False,
+                                 asr_model: str = "base") -> dict[str, Any]:
+        raise NotImplementedError(f"{self.name} 视频阅读尚未接入")

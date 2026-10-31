@@ -73,40 +73,149 @@ async def companion_my_posts(limit: int = 20, cursor: str = "0") -> str:
                            "has_more": bool(data.get("has_more"))}, ensure_ascii=False)
 
 
+async def _download_note_image(page, url: str) -> bytes:
+    import httpx
+    from urllib.parse import urljoin
+    cookies = httpx.Cookies()
+    for cookie in await page.context.cookies([url]):
+        cookies.set(cookie["name"], cookie["value"], domain=cookie.get("domain", ""), path=cookie.get("path", "/"))
+    async with httpx.AsyncClient(cookies=cookies, timeout=90, follow_redirects=False) as client:
+        for _ in range(4):
+            parsed = urlparse(url)
+            host = (parsed.hostname or "").lower()
+            allowed = upstream._media_url_allowed(url) or (
+                parsed.scheme == "https" and not parsed.username and not parsed.password
+                and (host == "douyinpic.com" or host.endswith(".douyinpic.com")))
+            if not allowed:
+                raise ValueError("图文图片地址不在允许的媒体域名内")
+            async with client.stream("GET", url, headers={"Referer": upstream.HOME_URL, "User-Agent": upstream.UA}) as response:
+                if response.is_redirect:
+                    url = urljoin(url, response.headers.get("location", ""))
+                    continue
+                response.raise_for_status()
+                data = bytearray()
+                async for chunk in response.aiter_bytes(65536):
+                    data.extend(chunk)
+                    if len(data) > 20 * 1024 * 1024:
+                        raise ValueError("图文图片超过下载大小上限")
+                return bytes(data)
+    raise ValueError("图文图片重定向次数过多")
+
+
 @upstream.mcp.tool()
-async def companion_video_frames(content_id: str, timestamps: list[float]) -> str:
-    """Capture visible video frames; no claim about unheard audio is made."""
-    if not content_id.isdigit() or not timestamps or len(timestamps) > 3:
-        raise ValueError("需要数字作品 ID 和 1 至 3 个时间点")
-    if any(not isinstance(t, (int, float)) or not 0 <= t <= 600 for t in timestamps):
-        raise ValueError("视频时间点必须在 0 到 600 秒之间")
+async def companion_video_frames(content_id: str, timestamps: list[float] | None = None,
+                                 frame_count: int = 8) -> str:
+    """Capture time-labelled visual frames. Audio is not transcribed."""
+    import re
+    match = re.search(r"(?:video|note)/(\d+)", content_id)
+    content_id = match.group(1) if match else content_id
+    if not content_id.isdigit() or not 1 <= frame_count <= 16:
+        raise ValueError("需要数字作品 ID 和 1 至 16 帧")
     async with upstream._browser.lock:
         page = await upstream._browser.page()
-        await page.goto(f"https://www.douyin.com/video/{content_id}", wait_until="domcontentloaded", timeout=45000)
-        video = page.locator("video:visible").first
-        await video.wait_for(state="visible", timeout=30000)
-        await video.scroll_into_view_if_needed()
+        # Capture the detail response: image posts have no video player, even at /video/ URLs.
+        net = upstream.Net(page, upstream._is_detail_url)
+        try:
+            await page.goto(f"https://www.douyin.com/video/{content_id}", wait_until="domcontentloaded", timeout=45000)
+            hit = await net.wait_for(lambda _u, data: bool((data.get("aweme_detail") or {}).get("aweme_id")), timeout=8)
+            detail = ((hit or {}).get("data") or {}).get("aweme_detail") or {}
+        finally:
+            net.close()
+        images = detail.get("images") or []
+        if images:
+            from io import BytesIO
+            from PIL import Image
+            frames = []
+            for item in images[:16]:
+                addresses = item.get("url_list") or item.get("download_url_list") or []
+                if not addresses:
+                    raise ValueError("图文图片没有可读取的媒体地址")
+                image = await _download_note_image(page, addresses[0])
+                picture = Image.open(BytesIO(image)).convert("RGB")
+                picture.thumbnail((960, 960))
+                out = BytesIO()
+                picture.save(out, format="JPEG", quality=80)
+                frames.append({"mime_type": "image/jpeg", "data": base64.b64encode(out.getvalue()).decode("ascii")})
+            return json.dumps({"ok": True, "platform": "douyin", "content_id": content_id,
+                               "content_type": "image", "title": detail.get("desc") or "",
+                               "duration": 0, "frames": frames, "image_count": len(images),
+                               "audio_understood": False}, ensure_ascii=False)
+        player = page.locator("video:visible").first
+        await player.wait_for(state="visible", timeout=30000)
+        await player.scroll_into_view_if_needed()
+        duration = await player.evaluate("""async v => {
+            v.muted = true;
+            if (v.readyState < 1) await new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('视频元数据加载超时')), 15000);
+                v.addEventListener('loadedmetadata', () => { clearTimeout(timer); resolve(); }, {once:true});
+            });
+            return v.duration;
+        }""")
+        if not duration or duration <= 0:
+            raise ValueError("无法获取抖音视频时长")
+        times = timestamps if timestamps is not None else [round(duration * (i + 0.5) / frame_count, 2)
+                                                           for i in range(frame_count)]
+        if not times or len(times) > 16 or any(t < 0 or t >= duration for t in times):
+            raise ValueError("请选择视频时长内的 1 至 16 个时间点")
         frames = []
-        for timestamp in timestamps:
-            actual = await video.evaluate("""async (v, requested) => {
-                v.muted = true;
-                if (v.readyState < 1) await new Promise((resolve, reject) => {
-                    const timer = setTimeout(() => reject(new Error('视频元数据加载超时')), 10000);
-                    v.addEventListener('loadedmetadata', () => { clearTimeout(timer); resolve(); }, {once:true});
-                });
-                const target = Number.isFinite(v.duration) ? Math.min(requested, Math.max(0, v.duration - 0.1)) : requested;
-                if (Math.abs(v.currentTime - target) > 0.1) await new Promise((resolve, reject) => {
-                    const timer = setTimeout(() => reject(new Error('视频定位超时')), 10000);
+        for timestamp in times:
+            actual = await player.evaluate("""async (v, requested) => {
+                if (Math.abs(v.currentTime - requested) > 0.05) await new Promise((resolve, reject) => {
+                    const timer = setTimeout(() => reject(new Error('视频定位超时')), 15000);
                     v.addEventListener('seeked', () => { clearTimeout(timer); resolve(); }, {once:true});
-                    v.currentTime = target;
+                    v.currentTime = requested;
                 });
                 v.pause();
                 return v.currentTime;
             }""", float(timestamp))
-            image = await video.screenshot(type="jpeg", quality=70, timeout=15000)
+            image = await player.screenshot(type="jpeg", quality=75, timeout=15000)
+            from io import BytesIO
+            from PIL import Image
+            picture = Image.open(BytesIO(image)).convert("RGB")
+            picture.thumbnail((960, 960))
+            compressed = BytesIO()
+            picture.save(compressed, format="JPEG", quality=75)
+            image = compressed.getvalue()
             frames.append({"time": actual, "mime_type": "image/jpeg", "data": base64.b64encode(image).decode("ascii")})
-        return json.dumps({"ok": True, "content_id": content_id, "frames": frames}, ensure_ascii=False)
+        return json.dumps({"ok": True, "platform": "douyin", "content_id": content_id,
+                           "title": await page.title(), "duration": duration, "frames": frames,
+                           "subtitles": "", "audio_understood": False}, ensure_ascii=False)
 
+
+@upstream.mcp.tool()
+async def companion_download_video(content_id: str) -> str:
+    """下载播放器视频到临时文件，供宿主在本机提取音频。"""
+    import re
+    import tempfile
+    match = re.search(r"(?:video|note)/(\d+)", content_id)
+    content_id = match.group(1) if match else content_id
+    if not content_id.isdigit():
+        raise ValueError("需要抖音数字作品 ID")
+    async with upstream._browser.lock:
+        page = await upstream._browser.page()
+        net = upstream.Net(page, upstream._is_detail_url)
+        try:
+            await upstream._goto(page, upstream.VIDEO_URL.format(aweme_id=content_id), settle=2)
+            hit = await net.wait_for(lambda _u, data: bool((data.get("aweme_detail") or {}).get("aweme_id")), timeout=15)
+            detail = ((hit or {}).get("data") or {}).get("aweme_detail") or {}
+            video = detail.get("video") or {}
+            addresses = [video.get("play_addr")] + [x.get("play_addr") for x in video.get("bit_rate") or []]
+            urls = [u for address in addresses for u in (address or {}).get("url_list", [])
+                    if upstream._media_url_allowed(u)]
+            if not urls:
+                raise ValueError("抖音未提供可读取的音轨视频地址")
+            folder = upstream.HOME / "media" / "audio-temp"
+            folder.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(prefix="video-", suffix=".mp4", dir=folder, delete=False) as f:
+                path = Path(f.name)
+            try:
+                await upstream._download_media(page, urls[0], path, max_bytes=256 * 1024 * 1024)
+            except BaseException:
+                path.unlink(missing_ok=True)
+                raise
+            return json.dumps({"ok": True, "path": str(path)}, ensure_ascii=False)
+        finally:
+            net.close()
 
 @upstream.mcp.tool()
 async def companion_account_info() -> str:
