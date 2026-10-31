@@ -367,6 +367,10 @@ class DshRuntime:
                 "先看已有任务和日程，继续已有工作，不重复派单；结果值得保留时记下结论和下一步。"
                 "需要稍后跟进就安排一次性任务；没值得做的事可以结束本轮。\n当前决策上下文：\n"
                 + json.dumps(self.memory.decision_context(), ensure_ascii=False))
+        if job["kind"] == "desktop_task":
+            prompt += ("\n这是用户从桌宠派来的一次性任务，直接执行 payload.text，不只是回答能不能做。"
+                       "已启用平台、会话对象、当前方向与记忆见下方；完成后给用户一句简短结果。\n"
+                       + json.dumps(self.memory.decision_context(), ensure_ascii=False))
         turn_platform = event["platform"] if event else job["payload"].get("platform", "")
         messages = []
         if job["kind"] in ("group_interaction", "private_message_batch") and job["payload"].get("platform"):

@@ -23,3 +23,11 @@ def control(operation: str) -> None:
     request = Request(base_url() + "/api/control/" + operation, data=b"", method="POST")
     with urlopen(request, timeout=3) as response:
         response.read()
+
+
+def assign_task(action: str, text: str = "") -> dict:
+    request = Request(base_url() + "/api/pet/task",
+        data=json.dumps({"action": action, "text": text}, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urlopen(request, timeout=5) as response:
+        return json.load(response)

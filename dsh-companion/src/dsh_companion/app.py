@@ -18,7 +18,7 @@ from .dsh_runtime import DshRuntime
 from .image_generation import ImageGeneration
 from .memory import MemoryCenter
 from .platform_service import PlatformService
-from .pet import DesktopPet, desktop_status
+from .pet import DesktopPet, desktop_status, enqueue_pet_task
 from .scheduler import Scheduler
 from .store import Store
 
@@ -228,6 +228,13 @@ def create_app(root: str | Path, *, data_dir: str | Path | None = None,
     @app.get("/api/pet")
     async def pet_status():
         return {**desktop_status(companion), "desktop": companion.pet.status()}
+
+    @app.post("/api/pet/task")
+    async def pet_task(body: dict[str, Any]):
+        try:
+            return enqueue_pet_task(companion, body.get("action", "custom"), body.get("text", ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/pet/{operation}")
     async def pet_control(operation: str):

@@ -14,7 +14,7 @@ from PIL import ImageTk
 
 from .animation import AnimationPlayer, status_animation
 
-from .client import read_status, control, base_url
+from .client import read_status, control, base_url, assign_task
 import json
 import os
 import webbrowser
@@ -82,6 +82,10 @@ class HarnessPet:
         self.reaction_until = 0.0
         self.is_polling = False
         self.status_updates = SimpleQueue()
+        self.task_updates = SimpleQueue()
+        self.is_assigning = False
+        self.command_feedback = ""
+        self.pending_command = None
 
         self._bind_events()
         self._set_scale(float(os.environ.get("COMPANION_PET_SCALE", "0.55")))
@@ -247,6 +251,8 @@ class HarnessPet:
         # HTTP workers only enqueue data; all Tk calls stay on its UI thread.
         while not self.status_updates.empty():
             self._apply_status(self.status_updates.get())
+        while not self.task_updates.empty():
+            self._apply_task_result(*self.task_updates.get())
         now = time.monotonic()
         animation = self._choose_animation(now)
         if animation != self.current_animation:
@@ -355,6 +361,24 @@ class HarnessPet:
         self.panel_workbench = tk.Button(panel, text="工作台 ↗", command=lambda: webbrowser.open(base_url()),
             bg=CARD_BG, fg="#287ba6", activebackground="#e3eff8", activeforeground=TEXT,
             relief="flat", font=("Microsoft YaHei UI", 8), bd=0, highlightthickness=0, cursor="hand2")
+        self.panel_labels["feedback"] = tk.Label(panel, bg=CARD_BG, fg=MUTED, anchor="w",
+            font=("Microsoft YaHei UI", 8))
+        self.panel_buttons = {}
+        for action, label in (("wake", "唤醒"), ("watch", "刷视频"), ("socialize", "找人聊")):
+            self.panel_buttons[action] = tk.Button(panel, text=label,
+                command=lambda action=action: self._assign_task(action),
+                bg="#e6f1fa", fg=TEXT, activebackground="#d3e7f5", activeforeground=TEXT,
+                relief="flat", font=("Microsoft YaHei UI", 9), bd=0,
+                highlightthickness=0, cursor="hand2")
+        self.panel_entry = tk.Entry(panel, bg="#ffffff", fg=TEXT, insertbackground=TEXT,
+            relief="flat", font=("Microsoft YaHei UI", 9), bd=0,
+            highlightthickness=1, highlightbackground="#d8e5ed", highlightcolor="#91b8d0")
+        self.panel_entry.bind("<Return>", lambda _event: self._assign_task("custom"))
+        self.panel_entry.bind("<Button-1>", lambda _event: self.panel_entry.focus_set())
+        self.panel_send = tk.Button(panel, text="派活", command=lambda: self._assign_task("custom"),
+            bg="#e6f1fa", fg="#287ba6", activebackground="#d3e7f5", activeforeground=TEXT,
+            relief="flat", font=("Microsoft YaHei UI", 9), bd=0,
+            highlightthickness=0, cursor="hand2")
         self.task_panel = panel
 
     def _show_task_panel(self) -> None:
@@ -398,7 +422,10 @@ class HarnessPet:
             text = self.status.get("message") or self.status.get("direction") or "没在忙，摸会儿鱼 🐟"
             lines = [self._short_text(text)]
         self.panel_labels["tasks"].configure(text="\n".join(lines))
-        self.panel_height = 102 + 20*len(lines)
+        self.panel_height = 178 + 20*len(lines)
+        self.panel_labels["feedback"].configure(text=self._short_text(self._command_message(), 16))
+        for button in (*self.panel_buttons.values(), self.panel_send):
+            button.configure(state="disabled" if self.is_assigning else "normal")
         canvas = self.panel_canvas
         canvas.delete("all")
         self._rounded_card(canvas, 1, 1, PANEL_WIDTH-2, self.panel_height-2, radius=14)
@@ -407,9 +434,72 @@ class HarnessPet:
         canvas.create_window(12, 39, window=self.panel_labels["count"], anchor="nw", width=PANEL_WIDTH-24)
         canvas.create_line(13, 64, PANEL_WIDTH-13, 64, fill="#d8e5ed")
         canvas.create_window(12, 72, window=self.panel_labels["tasks"], anchor="nw", width=PANEL_WIDTH-24)
+        controls_y = 78 + 20*len(lines)
+        for index, button in enumerate(self.panel_buttons.values()):
+            canvas.create_window(12+76*index, controls_y, window=button, anchor="nw", width=72, height=26)
+        canvas.create_window(12, controls_y+33, window=self.panel_entry, anchor="nw", width=174, height=26)
+        canvas.create_window(192, controls_y+33, window=self.panel_send, anchor="nw", width=44, height=26)
+        canvas.create_window(12, self.panel_height-27, window=self.panel_labels["feedback"],
+                             anchor="nw", width=150, height=21)
         canvas.create_window(PANEL_WIDTH-80, self.panel_height-27, window=self.panel_workbench,
                              anchor="nw", width=68, height=21)
         self._position_task_panel()
+
+    def _assign_task(self, action: str) -> None:
+        if self.is_assigning:
+            return
+        text = self.panel_entry.get() if action == "custom" else ""
+        if action == "custom" and not text.strip():
+            self.command_feedback = "先写一句想做的事呀"
+            self.panel_entry.focus_set()
+            self._refresh_task_panel()
+            return
+        self.is_assigning = True
+        self.command_feedback = "正在派活…"
+        self._refresh_task_panel()
+        threading.Thread(target=self._assign_task_worker, args=(action, text), daemon=True).start()
+
+    def _assign_task_worker(self, action: str, text: str) -> None:
+        from urllib.error import HTTPError, URLError
+        try:
+            result = assign_task(action, text)
+        except HTTPError as exc:
+            self.task_updates.put((action, text, None, f"派活没成功 · HTTP {exc.code}"))
+        except URLError:
+            self.task_updates.put((action, text, None, "工作台没连接"))
+        except Exception as exc:
+            self.task_updates.put((action, text, None, str(exc)))
+        else:
+            self.task_updates.put((action, text, result, ""))
+
+    def _apply_task_result(self, action: str, text: str, result: dict | None, error: str) -> None:
+        self.is_assigning = False
+        self.command_feedback = error
+        if result:
+            self.pending_command = {"id": result["id"], "status": result["status"],
+                                    "title": result["payload"]["task_title"]}
+            if action == "custom" and self.panel_entry.get() == text:
+                self.panel_entry.delete(0, "end")
+        self._refresh_task_panel()
+
+    def _command_message(self) -> str:
+        if self.command_feedback:
+            return self.command_feedback
+        command = self.status.get("command")
+        if self.pending_command:
+            if command and command["id"] == self.pending_command["id"]:
+                self.pending_command = None
+            else:
+                command = self.pending_command
+        if not command:
+            return "一句话派活，回车就行"
+        state = command["status"]
+        if state == "succeeded":
+            return "✓ " + (command.get("response") or "办好啦")
+        if state == "failed":
+            return "未完成 · " + (command.get("error") or command["title"])
+        prefix = {"ready": "已排队", "running": "在做", "cancelled": "已取消"}.get(state, state)
+        return prefix + " · " + command["title"]
 
     def run(self) -> None:
         self.root.mainloop()

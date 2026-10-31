@@ -9,6 +9,7 @@ import threading
 import time
 import tkinter as tk
 import uvicorn
+from urllib.error import URLError
 from PIL import ImageGrab, ImageChops
 from dsh_companion.app import Companion, create_app
 from dsh_companion.desktop_pet.window import HarnessPet
@@ -47,6 +48,54 @@ with TemporaryDirectory(prefix='mini-whale-qa-') as folder, \
             return ImageGrab.grab(bbox=(x,y,x+pet.root.winfo_width(),y+pet.root.winfo_height()))
         try:
             pump_until(lambda:pet.status.get('action')=='idle')
+            # Real Tk controls -> real HTTP -> isolated main queue, never live platforms.
+            pet._show_task_panel(); pump_for(.15)
+            companion.scheduler.pause()
+            companion.store.set_config('autonomy', {**companion.store.get_config('autonomy'), 'enabled':False})
+            for action, animation in [('wake','think'), ('watch','watch'), ('socialize','reply')]:
+                previous = (pet.status.get('command') or {}).get('id')
+                pet.panel_buttons[action].invoke()
+                pump_until(lambda: not pet.is_assigning and pet.status.get('command') and
+                           pet.status['command']['id'] != previous)
+                command = pet.status['command']; job = companion.store.get_job(command['id'])
+                assert job['actor_id']=='main' and not job['autonomous'] and job['status']=='ready'
+                assert '已排队' in pet.panel_labels['feedback'].cget('text')
+                companion.store.start_job(job['id'])
+                pump_until(lambda:pet.current_animation==animation)
+                assert '在做' in pet.panel_labels['feedback'].cget('text')
+                if action=='watch':
+                    pump_for(.2) # allow the Windows compositor to present the latest Tk frame
+                    x=pet.task_panel.winfo_x();y=min(pet.task_panel.winfo_y(),pet.root.winfo_y())
+                    right=pet.root.winfo_x()+pet.root.winfo_width()
+                    bottom=max(pet.root.winfo_y()+pet.root.winfo_height(),pet.task_panel.winfo_y()+pet.panel_height)
+                    ImageGrab.grab(bbox=(x-8,y-8,right+8,bottom+8)).save(OUTPUT/'desktop-pet-commands.png')
+                companion.store.finish_job(job['id'],result={'response':'看到了猫猫，评论也读啦'})
+                pump_until(lambda:pet.status['command']['status']=='succeeded')
+                assert '猫猫' in pet.panel_labels['feedback'].cget('text')
+            assert companion.store.get_config('paused')
+            assert not companion.store.get_config('autonomy')['enabled']
+            pet.panel_entry.insert(0,'去看看猫猫视频')
+            pump_for(1.6)
+            assert pet.panel_entry.get()=='去看看猫猫视频' # refresh never rebuilds the Entry
+            pet.task_panel.focus_force();pet.panel_entry.focus_set();pump_for(.1)
+            pet.panel_entry.event_generate('<Return>')
+            pump_until(lambda:not pet.is_assigning and pet.panel_entry.get()=='')
+            pump_until(lambda:pet.status['command']['title']=='执行你的安排')
+            custom=companion.store.get_job(pet.status['command']['id'])
+            assert custom['payload']['text']=='去看看猫猫视频'
+            companion.store.start_job(custom['id']);companion.store.finish_job(custom['id'],error='测试平台未登录')
+            pump_until(lambda:pet.status['command']['status']=='failed')
+            assert '未完成' in pet.panel_labels['feedback'].cget('text')
+            pet.panel_entry.insert(0,'保留这句话')
+            with patch('dsh_companion.desktop_pet.window.assign_task',side_effect=URLError('offline')):
+                pet.panel_send.invoke();pump_until(lambda:not pet.is_assigning)
+            assert pet.panel_entry.get()=='保留这句话'
+            assert pet.panel_labels['feedback'].cget('text')=='工作台没连接'
+            assert str(pet.panel_send.cget('state'))=='normal'
+            pet.panel_entry.delete(0,'end');pet.command_feedback=''
+            pet.task_panel.event_generate('<Escape>');pump_for(.1)
+            assert not pet._task_panel_is_visible()
+            companion.scheduler.resume()
             companion.store.set_config('autonomy',{**companion.store.get_config('autonomy'),'direction':'做一份夜景拍摄指南'})
             job=companion.store.create_job('main','manual',{'message':'聊聊夜景'})
             companion.store.start_job(job['id'])
@@ -68,7 +117,7 @@ with TemporaryDirectory(prefix='mini-whale-qa-') as folder, \
                     pet._show_task_panel();pump_for(.1)
                     assert pet.panel_labels['status'].cget('text')=='大肥鱼在读评论'
                     assert pet.task_panel.winfo_width()==248
-                    assert pet.task_panel.winfo_height()<=182
+                    assert pet.task_panel.winfo_height()<=258
                     assert abs(pet.task_panel.attributes('-alpha')-.82)<.01
                     assert str(pet.task_panel.attributes('-transparentcolor'))=='#00ff00'
                     # A genuine transparent card changes pixels with its backdrop.
@@ -96,7 +145,7 @@ with TemporaryDirectory(prefix='mini-whale-qa-') as folder, \
             pet.status={'state':'idle','action':'idle','title':'大肥鱼自由待命',
                         'todos':[{'content':'这是一条特别特别长的任务标题，需要简短显示而不是撑大面板','status':'pending'}]*6}
             pet._show_task_panel();pet.root.update()
-            assert pet.task_panel.winfo_height()==182
+            assert pet.task_panel.winfo_height()==258
             assert len(pet.panel_labels['tasks'].cget('text').splitlines())==4
             assert '另有 3 项' in pet.panel_labels['tasks'].cget('text')
             assert '…' in pet.panel_labels['tasks'].cget('text')
@@ -107,7 +156,7 @@ with TemporaryDirectory(prefix='mini-whale-qa-') as folder, \
             pump_until(lambda:pet.current_animation=='wave')
             pet.was_dragged=True;pump_until(lambda:pet.current_animation=='drag');pet.was_dragged=False
             frames[0].save(OUTPUT/'desktop-pet-actions.gif',save_all=True,append_images=frames[1:],duration=80,loop=0)
-            print('Native pet + real API passed: replying, watching, reading, writing, drawing, coding, completion, pause, frame motion, compact light panel, real transparency, queue truncation, scaling, idle play, click and drag.')
+            print('Native pet controls + real API passed: preset queue, Enter submit, persistent input, completed/failed results, offline feedback, paused one-offs; replying, watching, reading, writing, drawing, coding, completion, pause, frame motion, compact light panel, real transparency, queue truncation, scaling, idle play, click and drag.')
         finally:
             # Finish outstanding HTTP delivery before destroying its Tk receiver.
             pump_until(lambda:not pet.is_polling)
